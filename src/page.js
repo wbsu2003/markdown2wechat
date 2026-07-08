@@ -319,7 +319,7 @@ function pageHtml() {
     h1o: 'margin:30px 0 15px;padding:0;display:block;',
     h1i: 'display:block;font-size:24px;color:#000000;line-height:1.5em;letter-spacing:0em;text-align:left;font-weight:bold;',
     h2o: 'margin:30px 0 15px;padding:0;display:block;text-align:left;',
-    h2i: 'display:inline-block;font-size:18px;color:#ffffff;background-color:#212122;line-height:2.4em;letter-spacing:0em;padding:0 30px 0 15px;font-weight:bold;',
+    h2i: 'display:inline-block;font-size:18px;color:#ffffff;background-color:#212122;line-height:2.4em;letter-spacing:0em;padding:0 30px 0 15px;font-weight:bold;border-radius:0 0 40px 0;',
     h3o: 'margin:25px 0 12px;padding:0;display:block;',
     h3i: 'display:inline-block;font-size:16px;color:#000000;line-height:1.5em;font-weight:bold;border-left:3px solid #212122;padding-left:8px;',
     h4o: 'margin:20px 0 10px;padding:0;display:block;',

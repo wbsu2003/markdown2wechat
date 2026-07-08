@@ -1,5 +1,7 @@
 # markdown2wechat
 
+[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/wbsu2003/markdown2wechat)
+
 部署在 Cloudflare Workers 上的 Markdown → 微信公众号排版工具。左侧写 Markdown，右侧实时渲染公众号效果，一键复制到公众号后台粘贴即用。
 
 ## 功能
@@ -20,7 +22,7 @@
 | 正文 | 15px / 1.8em 行高 / 纯黑，段落上下 padding 8px |
 | 加粗 / 行内代码 | 强调色 `#ef7060`（红橙） |
 | H1 | 24px 加粗纯黑 |
-| H2 | 黑底白字标签块（`#212122` 背景、18px、行高 2.4em） |
+| H2 | 黑底白字标签块（`#212122` 背景、18px、行高 2.4em、右下角 40px 圆弧） |
 | H3 | 16px 加粗 + 左侧黑色竖条 |
 | 引用块 | 左侧 3px 深灰竖线 + 5% 黑色底 |
 | 代码块 | **苹果风格**：Mac 红黄绿窗口按钮（base64 SVG 背景图）+ Atom One Dark 配色（`#282c34` 底）+ macOS 窗口阴影 |
@@ -40,10 +42,16 @@
 
 ## 开发与部署
 
+**方式一：一键部署**——点击上方「Deploy to Cloudflare Workers」按钮，登录 Cloudflare 后授权连接 GitHub，向导会自动克隆本仓库并完成部署（配置读取自 `wrangler.toml`）。
+
+**方式二：命令行部署**
+
 ```bash
+git clone https://github.com/wbsu2003/markdown2wechat.git
+cd markdown2wechat
 npm install
 npm run dev      # 本地 http://localhost:8787
-npm run deploy   # 部署到 Cloudflare Workers
+npm run deploy   # 部署到 Cloudflare Workers（首次会引导 wrangler login）
 ```
 
 ## 项目结构
