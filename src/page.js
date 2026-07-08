@@ -98,6 +98,21 @@ function pageHtml() {
     width: 46%;
     background: #fff;
     display: flex;
+    position: relative;
+  }
+  .editor-pane.dragging::after {
+    content: '松开载入 Markdown 文件';
+    position: absolute;
+    inset: 8px;
+    border: 2px dashed #07c160;
+    border-radius: 10px;
+    background: rgba(7, 193, 96, .06);
+    color: #07c160;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
   }
   #editor {
     flex: 1;
@@ -206,6 +221,54 @@ function pageHtml() {
   }
   .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
+  /* ===== 笔记库抽屉 ===== */
+  .drawer {
+    position: fixed;
+    top: 52px; left: 0; bottom: 0;
+    width: 320px;
+    background: #fff;
+    border-right: 1px solid #e5e7eb;
+    box-shadow: 8px 0 24px rgba(0,0,0,.07);
+    transform: translateX(-102%);
+    transition: transform .2s ease;
+    z-index: 40;
+    display: flex;
+    flex-direction: column;
+  }
+  .drawer.open { transform: none; }
+  .drawer-head {
+    display: flex;
+    gap: 8px;
+    padding: 12px;
+    border-bottom: 1px solid #f0f0f0;
+  }
+  .drawer-head input {
+    flex: 1;
+    padding: 7px 10px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 13px;
+    outline: none;
+  }
+  .drawer-head input:focus { border-color: #07c160; }
+  .drawer-head button {
+    padding: 0 10px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    background: #fff;
+    color: #4b5563;
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .drawer-head button:hover { background: #f6f7f9; }
+  .drawer-list { flex: 1; overflow-y: auto; padding: 6px 0; }
+  .vault-item { padding: 8px 16px; cursor: pointer; }
+  .vault-item:hover { background: #f0faf4; }
+  .vault-item b { display: block; font-size: 13px; font-weight: 600; color: #1f2328; }
+  .vault-item span { display: block; font-size: 11px; color: #9ca3af; margin-top: 2px; word-break: break-all; }
+  .drawer-empty { padding: 40px 20px; text-align: center; color: #c0c4cc; font-size: 13px; }
+
   @media (max-width: 860px) {
     .split { flex-direction: column; }
     .editor-pane { width: auto; height: 45%; }
@@ -258,6 +321,12 @@ function pageHtml() {
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><line x1="2" y1="8" x2="6" y2="8"/><circle cx="8" cy="8" r=".8" fill="currentColor" stroke="none"/><line x1="10" y1="8" x2="14" y2="8"/></svg>
     </button>
     <span class="sep"></span>
+    <button class="tb" data-act="openfile" title="打开本地 Markdown 文件（也可直接拖拽文件到左侧）">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 12.5v-8a1 1 0 0 1 1-1h3l1.5 1.8h5.5a1 1 0 0 1 1 1v6.2a1 1 0 0 1-1 1h-10a1 1 0 0 1-1-1z"/></svg>
+    </button>
+    <button class="tb" data-act="vault" title="Obsidian / 本地笔记库：授权目录后点选笔记直接载入">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"><path d="M8 1.5 12.8 5 11.4 14 4.6 14 3.2 5z"/><path d="M8 1.5 6.8 8.2 8 14"/><path d="M3.2 5h9.6" opacity=".5"/></svg>
+    </button>
     <button class="tb" data-act="sample" title="载入示例文档">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 1.5H4a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V5z"/><path d="M9.5 1.5V5H13"/><line x1="5.5" y1="8" x2="10.5" y2="8"/><line x1="5.5" y1="10.5" x2="10.5" y2="10.5"/></svg>
     </button>
@@ -300,6 +369,16 @@ function pageHtml() {
     </div>
   </div>
 </div>
+
+<div class="drawer" id="drawer">
+  <div class="drawer-head">
+    <input id="vaultSearch" placeholder="搜索笔记标题或路径…">
+    <button id="vaultSwitch" title="重新选择笔记库目录">换库</button>
+  </div>
+  <div class="drawer-list" id="vaultList"></div>
+</div>
+
+<input type="file" id="fileInput" accept=".md,.markdown,.txt" style="display:none">
 
 <div class="toast" id="toast"></div>
 
@@ -543,10 +622,23 @@ function pageHtml() {
     return md.replace(/^\\uFEFF?[ \\t\\r\\n]*---[ \\t]*\\r?\\n[\\s\\S]*?\\r?\\n(?:---|\\.\\.\\.)[ \\t]*(?:\\r?\\n|$)/, '');
   }
 
+  /* Obsidian 语法转通用 markdown：[[双链]] 文本化、![[附件]] 转提示。
+     按代码围栏分段，只处理围栏外的内容（避免误伤 bash 的 [[ -f x ]] 等）。 */
+  function obsidianize(md) {
+    var parts = md.split(/(\\u0060\\u0060\\u0060[\\s\\S]*?\\u0060\\u0060\\u0060)/);
+    for (var i = 0; i < parts.length; i += 2) {
+      parts[i] = parts[i]
+        .replace(/!\\[\\[([^\\]|]+?)(?:\\|[^\\]]*)?\\]\\]/g, '\\u0060[本地附件: $1，请上传图床后替换]\\u0060')
+        .replace(/\\[\\[([^\\]|]+?)\\|([^\\]]+?)\\]\\]/g, '$2')
+        .replace(/\\[\\[([^\\]]+?)\\]\\]/g, '$1');
+    }
+    return parts.join('');
+  }
+
   function renderNow() {
     var md = ed.value;
     stat.textContent = md.length + ' 字';
-    md = stripFrontMatter(md);
+    md = obsidianize(stripFrontMatter(md));
     if (!md.trim()) {
       preview.innerHTML = '<div class="empty-tip">左侧输入 Markdown，这里实时预览</div>';
       return;
@@ -693,6 +785,230 @@ function pageHtml() {
     if (e.key === 'Enter') { e.preventDefault(); confirmModal(); }
   });
 
+  /* ================= 本地文件 / Obsidian 笔记库 ================= */
+  function idbOpen() {
+    return new Promise(function (resolve, reject) {
+      var req = indexedDB.open('md2wx', 1);
+      req.onupgradeneeded = function () { req.result.createObjectStore('kv'); };
+      req.onsuccess = function () { resolve(req.result); };
+      req.onerror = function () { reject(req.error); };
+    });
+  }
+  function idbSet(key, val) {
+    return idbOpen().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx = db.transaction('kv', 'readwrite');
+        tx.objectStore('kv').put(val, key);
+        tx.oncomplete = resolve;
+        tx.onerror = function () { reject(tx.error); };
+      });
+    });
+  }
+  function idbGet(key) {
+    return idbOpen().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var req = db.transaction('kv').objectStore('kv').get(key);
+        req.onsuccess = function () { resolve(req.result || null); };
+        req.onerror = function () { reject(req.error); };
+      });
+    });
+  }
+
+  function loadContent(text, name) {
+    ed.value = text;
+    ed.dispatchEvent(new Event('input', { bubbles: true }));
+    ed.scrollTop = 0;
+    closeDrawer();
+    toast('已载入 ' + name);
+  }
+
+  var fileInput = document.getElementById('fileInput');
+  fileInput.addEventListener('change', function () {
+    var f = fileInput.files[0];
+    if (!f) return;
+    f.text().then(function (t) { loadContent(t, f.name); });
+    fileInput.value = '';
+  });
+
+  function openLocalFile() {
+    if (window.showOpenFilePicker) {
+      window.showOpenFilePicker({
+        types: [{ description: 'Markdown', accept: { 'text/markdown': ['.md', '.markdown'], 'text/plain': ['.txt'] } }]
+      }).then(function (handles) {
+        return handles[0].getFile();
+      }).then(function (f) {
+        return f.text().then(function (t) { loadContent(t, f.name); });
+      }).catch(function (e) {
+        if (e && e.name !== 'AbortError') toast('打开失败：' + e.message);
+      });
+    } else {
+      fileInput.click();
+    }
+  }
+
+  /* --- Obsidian vault --- */
+  var drawer = document.getElementById('drawer');
+  var vaultList = document.getElementById('vaultList');
+  var vaultSearch = document.getElementById('vaultSearch');
+  var vaultHandle = null;
+  var vaultFiles = [];
+
+  function openDrawer() {
+    drawer.classList.add('open');
+    setTimeout(function () { vaultSearch.focus(); }, 120);
+  }
+  function closeDrawer() { drawer.classList.remove('open'); }
+
+  document.addEventListener('mousedown', function (e) {
+    if (!drawer.classList.contains('open')) return;
+    if (drawer.contains(e.target)) return;
+    var btn = e.target.closest ? e.target.closest('[data-act="vault"]') : null;
+    if (btn) return;
+    closeDrawer();
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && drawer.classList.contains('open')) closeDrawer();
+  });
+
+  function scanVault(dir) {
+    var out = [];
+    function walk(d, prefix) {
+      var it = d.values();
+      function step() {
+        return it.next().then(function (r) {
+          if (r.done) return null;
+          var entry = r.value;
+          if (entry.name.charAt(0) === '.') return step();
+          if (entry.kind === 'directory') {
+            return walk(entry, prefix + entry.name + '/').then(step);
+          }
+          if (/\\.(md|markdown|txt)$/i.test(entry.name)) {
+            out.push({ name: entry.name, path: prefix + entry.name, handle: entry, mtime: 0 });
+          }
+          return step();
+        });
+      }
+      return step();
+    }
+    return walk(dir, '').then(function () {
+      if (out.length === 0 || out.length > 800) {
+        out.sort(function (a, b) { return a.path < b.path ? -1 : 1; });
+        return out;
+      }
+      return Promise.all(out.map(function (f) {
+        return f.handle.getFile().then(
+          function (file) { f.mtime = file.lastModified; },
+          function () {}
+        );
+      })).then(function () {
+        out.sort(function (a, b) { return b.mtime - a.mtime; });
+        return out;
+      });
+    });
+  }
+
+  function renderVaultList(query) {
+    var q = (query || '').trim().toLowerCase();
+    var shown = 0;
+    var html = '';
+    for (var i = 0; i < vaultFiles.length && shown < 400; i++) {
+      var f = vaultFiles[i];
+      if (q && f.path.toLowerCase().indexOf(q) === -1) continue;
+      shown += 1;
+      html += '<div class="vault-item" data-path="' + esc(f.path) + '"><b>' +
+        esc(f.name.replace(/\\.(md|markdown|txt)$/i, '')) + '</b><span>' + esc(f.path) + '</span></div>';
+    }
+    vaultList.innerHTML = html || '<div class="drawer-empty">' +
+      (vaultFiles.length ? '没有匹配的笔记' : '笔记库为空') + '</div>';
+  }
+
+  vaultSearch.addEventListener('input', function () { renderVaultList(vaultSearch.value); });
+
+  vaultList.addEventListener('click', function (e) {
+    var item = e.target.closest('.vault-item');
+    if (!item) return;
+    var path = item.getAttribute('data-path');
+    for (var i = 0; i < vaultFiles.length; i++) {
+      if (vaultFiles[i].path === path) {
+        vaultFiles[i].handle.getFile().then(function (f) {
+          return f.text().then(function (t) { loadContent(t, f.name); });
+        }, function (err) { toast('读取失败：' + err.message); });
+        return;
+      }
+    }
+  });
+
+  function pickVault() {
+    return window.showDirectoryPicker({ id: 'obsidianVault' }).then(function (h) {
+      vaultHandle = h;
+      return idbSet('vault', h).catch(function () {}).then(function () { return h; });
+    });
+  }
+
+  function ensurePermission(handle) {
+    return handle.queryPermission({ mode: 'read' }).then(function (p) {
+      if (p === 'granted') return true;
+      return handle.requestPermission({ mode: 'read' }).then(function (p2) { return p2 === 'granted'; });
+    });
+  }
+
+  function openVault(forcePick) {
+    if (!window.showDirectoryPicker) {
+      toast('当前浏览器不支持目录访问，请用 Chrome/Edge，或改用「打开文件」按钮');
+      return;
+    }
+    var ready;
+    if (forcePick) {
+      ready = pickVault();
+    } else if (vaultHandle) {
+      ready = Promise.resolve(vaultHandle);
+    } else {
+      ready = idbGet('vault').then(function (saved) {
+        if (!saved) return pickVault();
+        return ensurePermission(saved).then(function (ok) {
+          if (ok) { vaultHandle = saved; return saved; }
+          return pickVault();
+        });
+      });
+    }
+    ready.then(function (handle) {
+      openDrawer();
+      vaultList.innerHTML = '<div class="drawer-empty">正在扫描笔记库…</div>';
+      return scanVault(handle).then(function (files) {
+        vaultFiles = files;
+        renderVaultList(vaultSearch.value);
+      });
+    }).catch(function (e) {
+      closeDrawer();
+      if (e && e.name === 'AbortError') return;
+      toast('打开笔记库失败：' + (e && e.message ? e.message : e));
+    });
+  }
+
+  document.getElementById('vaultSwitch').addEventListener('click', function () { openVault(true); });
+
+  /* 拖拽 .md 文件到编辑器载入 */
+  var editorPaneEl = document.getElementById('editorPane');
+  ['dragenter', 'dragover'].forEach(function (ev) {
+    editorPaneEl.addEventListener(ev, function (e) {
+      e.preventDefault();
+      editorPaneEl.classList.add('dragging');
+    });
+  });
+  editorPaneEl.addEventListener('dragleave', function (e) {
+    if (e.target === editorPaneEl || !editorPaneEl.contains(e.relatedTarget)) {
+      editorPaneEl.classList.remove('dragging');
+    }
+  });
+  editorPaneEl.addEventListener('drop', function (e) {
+    e.preventDefault();
+    editorPaneEl.classList.remove('dragging');
+    var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if (!f) return;
+    if (!/\\.(md|markdown|txt)$/i.test(f.name)) { toast('仅支持 .md / .markdown / .txt 文件'); return; }
+    f.text().then(function (t) { loadContent(t, f.name); });
+  });
+
   /* ================= 工具栏动作 ================= */
   var SAMPLE = [
     '# Markdown 公众号排版指南',
@@ -763,6 +1079,8 @@ function pageHtml() {
       insertBlock('| 表头一 | 表头二 |\\n| --- | --- |\\n| 内容 | 内容 |');
     },
     hr: function () { insertBlock('---'); },
+    openfile: function () { openLocalFile(); },
+    vault: function () { openVault(false); },
     sample: function () {
       if (ed.value.trim() && !confirm('载入示例会覆盖当前内容，继续？')) return;
       ed.value = SAMPLE;
