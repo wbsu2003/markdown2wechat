@@ -1,0 +1,8 @@
+name = "markdown2wechat"
+main = "src/index.js"
+compatibility_date = "2025-04-01"
+
+# 把 vendor 目录下的 .txt 当作文本模块打包（marked / highlight.js 浏览器版）
+rules = [
+  { type = "Text", globs = ["**/*.txt"] }
+]
