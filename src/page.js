@@ -12,7 +12,7 @@ function pageHtml() {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Markdown · 公众号排版</title>
-<link rel="icon" href="data:,">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2307c160'/%3E%3Cpath d='M13 45V19h8l7 9 7-9h8v26h-8V32l-7 9-7-9v13z' fill='%23fff'/%3E%3C/svg%3E">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { height: 100%; }
@@ -165,10 +165,12 @@ function pageHtml() {
   #preview pre { overflow-x: auto; }
   .empty-tip { color: #c0c4cc; font-size: 14px; text-align: center; padding: 60px 0; }
 
-  /* ===== 弹层（插入图片/链接） ===== */
+  /* ===== 弹层（统一半透磨砂） ===== */
   .mask {
     position: fixed; inset: 0;
-    background: rgba(17, 24, 39, .35);
+    background: rgba(15, 23, 42, .28);
+    backdrop-filter: blur(8px) saturate(1.2);
+    -webkit-backdrop-filter: blur(8px) saturate(1.2);
     display: none;
     align-items: center;
     justify-content: center;
@@ -177,8 +179,11 @@ function pageHtml() {
   .mask.show { display: flex; }
   .modal {
     width: 380px;
-    background: #fff;
-    border-radius: 12px;
+    background: rgba(255, 255, 255, .82);
+    backdrop-filter: blur(24px) saturate(1.6);
+    -webkit-backdrop-filter: blur(24px) saturate(1.6);
+    border: 1px solid rgba(255, 255, 255, .65);
+    border-radius: 14px;
     padding: 22px 24px;
     box-shadow: 0 12px 40px rgba(0,0,0,.18);
   }
@@ -192,6 +197,7 @@ function pageHtml() {
     border-radius: 6px;
     font-size: 13px;
     outline: none;
+    background: rgba(255,255,255,.85);
   }
   .modal input:focus { border-color: #07c160; }
   .modal-btns { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
@@ -199,11 +205,61 @@ function pageHtml() {
     height: 32px; padding: 0 16px;
     border: 1px solid #d1d5db;
     border-radius: 6px;
-    background: #fff;
+    background: rgba(255,255,255,.7);
     color: #4b5563;
     font-size: 13px;
     cursor: pointer;
   }
+
+  /* ===== 关于 / 帮助 弹窗 ===== */
+  .info-modal { width: 480px; max-width: calc(100vw - 40px); padding: 0; overflow: hidden; }
+  .info-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 15px 20px 12px;
+    border-bottom: 1px solid rgba(0,0,0,.06);
+  }
+  .info-head h3 { font-size: 15px; margin: 0; }
+  .info-close {
+    border: none;
+    background: transparent;
+    font-size: 20px;
+    line-height: 1;
+    color: #9ca3af;
+    cursor: pointer;
+    padding: 2px 7px;
+    border-radius: 6px;
+  }
+  .info-close:hover { background: rgba(0,0,0,.06); color: #111; }
+  .info-body {
+    padding: 16px 20px 20px;
+    max-height: 62vh;
+    overflow-y: auto;
+    font-size: 13.5px;
+    line-height: 1.8;
+    color: #374151;
+  }
+  .info-body h4 { font-size: 13.5px; margin: 15px 0 5px; color: #111; }
+  .info-body h4:first-child { margin-top: 0; }
+  .info-body p { margin: 5px 0; }
+  .info-body ul, .info-body ol { padding-left: 20px; margin: 5px 0; }
+  .info-body li { margin: 3px 0; }
+  .info-body code {
+    background: rgba(27,31,35,.06);
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-family: Consolas, Menlo, monospace;
+    font-size: 12px;
+    color: #c7254e;
+  }
+  .info-body a { color: #059f52; text-decoration: none; font-weight: 600; }
+  .info-body a:hover { text-decoration: underline; }
+  .about-hero { display: flex; align-items: center; gap: 14px; margin: 4px 0 14px; }
+  .about-hero svg { width: 52px; height: 52px; border-radius: 12px; flex: none; box-shadow: 0 4px 12px rgba(7,193,96,.3); }
+  .about-hero .t b { font-size: 16px; display: block; }
+  .about-hero .t span { font-size: 12px; color: #9ca3af; }
+  .about-muted { font-size: 12px; color: #9ca3af; margin-top: 12px; }
 
   .toast {
     position: fixed;
@@ -320,6 +376,9 @@ function pageHtml() {
     <button class="tb" data-act="hr" title="插入分割线">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><line x1="2" y1="8" x2="6" y2="8"/><circle cx="8" cy="8" r=".8" fill="currentColor" stroke="none"/><line x1="10" y1="8" x2="14" y2="8"/></svg>
     </button>
+    <button class="tb" data-act="cdnswap" title="图床替换：raw.githubusercontent.com → cdn.jsdelivr.net（粘贴时也会自动替换）">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5.5h9.5"/><path d="M10.2 3.2 12.5 5.5l-2.3 2.3"/><path d="M13 10.5H3.5"/><path d="M5.8 12.8 3.5 10.5l2.3-2.3"/></svg>
+    </button>
     <span class="sep"></span>
     <button class="tb" data-act="openfile" title="打开本地 Markdown 文件（也可直接拖拽文件到左侧）">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 12.5v-8a1 1 0 0 1 1-1h3l1.5 1.8h5.5a1 1 0 0 1 1 1v6.2a1 1 0 0 1-1 1h-10a1 1 0 0 1-1-1z"/></svg>
@@ -337,6 +396,12 @@ function pageHtml() {
 
   <div class="actions">
     <span class="stat" id="stat">0 字</span>
+    <button class="tb" id="helpBtn" title="帮助">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><circle cx="8" cy="8" r="6.4"/><path d="M6.2 6.2a1.9 1.9 0 1 1 2.6 1.85c-.5.2-.8.55-.8 1.05v.3"/><circle cx="8" cy="11.4" r=".8" fill="currentColor" stroke="none"/></svg>
+    </button>
+    <button class="tb" id="aboutBtn" title="关于与版本">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><circle cx="8" cy="8" r="6.4"/><line x1="8" y1="7.2" x2="8" y2="11.2"/><circle cx="8" cy="4.9" r=".8" fill="currentColor" stroke="none"/></svg>
+    </button>
     <button class="primary" id="copyBtn">复制到公众号</button>
   </div>
 </header>
@@ -367,6 +432,16 @@ function pageHtml() {
       <button class="ghost" id="modalCancel">取消</button>
       <button class="primary" id="modalOk">插入</button>
     </div>
+  </div>
+</div>
+
+<div class="mask" id="infoMask">
+  <div class="modal info-modal">
+    <div class="info-head">
+      <h3 id="infoTitle">关于</h3>
+      <button class="info-close" id="infoClose" title="关闭">&times;</button>
+    </div>
+    <div class="info-body" id="infoBody"></div>
   </div>
 </div>
 
@@ -785,6 +860,105 @@ function pageHtml() {
     if (e.key === 'Enter') { e.preventDefault(); confirmModal(); }
   });
 
+  /* ================= 关于 / 帮助 弹窗 ================= */
+  var APP_VERSION = 'v0.0.2';
+  var APP_DATE = '20260708';
+  var REPO_URL = 'https://github.com/wbsu2003/markdown2wechat';
+
+  var LOGO_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">' +
+    '<rect width="64" height="64" rx="14" fill="#07c160"/>' +
+    '<path d="M13 45V19h8l7 9 7-9h8v26h-8V32l-7 9-7-9v13z" fill="#fff"/></svg>';
+
+  var ABOUT_HTML = '<div class="about-hero">' + LOGO_SVG +
+    '<div class="t"><b>MD → 公众号</b><span>' + APP_VERSION + '（' + APP_DATE + '）</span></div></div>' +
+    '<p>这是<strong>老苏自用</strong>的 Markdown 转 HTML 小工具：左侧写 Markdown，右侧实时预览公众号排版，复制后到公众号后台编辑器直接粘贴。</p>' +
+    '<p>开源地址：<a href="' + REPO_URL + '" target="_blank" rel="noopener">github.com/wbsu2003/markdown2wechat</a></p>' +
+    '<p class="about-muted">部署在 Cloudflare Workers · 渲染全部在浏览器本地完成，内容不会上传服务器。</p>';
+
+  var HELP_MD = [
+    '#### 快速上手',
+    '1. 左侧粘贴或编写 Markdown（也可以直接把 .md 文件拖进来）',
+    '2. 右侧实时预览公众号排版效果',
+    '3. 点右上角「复制到公众号」，到公众号后台编辑器 Ctrl+V 粘贴',
+    '',
+    '#### 导入 Obsidian 笔记',
+    '- 点工具栏「宝石」图标，首次需授权笔记库目录（Chrome/Edge）',
+    '- 笔记按最近修改排序，支持搜索，点选即载入',
+    '- \\u0060[[双链]]\\u0060 自动转纯文本，\\u0060![[附件]]\\u0060 转为替换提示',
+    '',
+    '#### 图床域名替换',
+    '粘贴内容时自动把 \\u0060raw.githubusercontent.com\\u0060 图片链接改写为 \\u0060cdn.jsdelivr.net\\u0060（国内可访问、公众号可转存）；也可点工具栏 ⇄ 按钮对全文替换。',
+    '',
+    '#### 排版说明',
+    '- 文档开头的 YAML front matter（\\u0060---\\u0060 包裹）不会被渲染',
+    '- 代码块为苹果窗口风格 + Atom One Dark 配色',
+    '- 图片请使用图床外链，公众号粘贴时会自动转存',
+    '',
+    '#### 快捷键',
+    '- \\u0060Ctrl+B\\u0060 加粗、\\u0060Ctrl+I\\u0060 斜体、\\u0060Ctrl+K\\u0060 插入链接',
+    '- \\u0060Tab\\u0060 缩进两个空格',
+    '',
+    '#### 数据安全',
+    '渲染在浏览器本地完成，内容不会上传服务器；草稿自动保存在浏览器 localStorage，清空浏览器数据前请注意备份。'
+  ].join('\\n');
+
+  var infoMask = document.getElementById('infoMask');
+  var infoTitle = document.getElementById('infoTitle');
+  var infoBody = document.getElementById('infoBody');
+  var helpCache = null;
+
+  function helpHtml() {
+    if (helpCache) return helpCache;
+    try {
+      var plain = new window.marked.Marked({ gfm: true });
+      helpCache = plain.parse(HELP_MD);
+    } catch (e) {
+      helpCache = '<pre>' + esc(HELP_MD) + '</pre>';
+    }
+    return helpCache;
+  }
+
+  function openInfo(kind) {
+    if (kind === 'about') {
+      infoTitle.textContent = '关于';
+      infoBody.innerHTML = ABOUT_HTML;
+    } else {
+      infoTitle.textContent = '帮助';
+      infoBody.innerHTML = helpHtml();
+    }
+    infoMask.classList.add('show');
+  }
+  function closeInfo() { infoMask.classList.remove('show'); }
+
+  document.getElementById('aboutBtn').addEventListener('click', function () { openInfo('about'); });
+  document.getElementById('helpBtn').addEventListener('click', function () { openInfo('help'); });
+  document.getElementById('infoClose').addEventListener('click', closeInfo);
+  infoMask.addEventListener('click', function (e) { if (e.target === infoMask) closeInfo(); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && infoMask.classList.contains('show')) closeInfo();
+  });
+
+  /* ================= 图床域名替换（raw.githubusercontent -> jsdelivr） ================= */
+  var RAW_RE = /(https?:\\/\\/)raw\\.githubusercontent\\.com\\/([^\\/\\s)]+)\\/([^\\/\\s)]+)\\/(?:refs\\/heads\\/)?([^\\/\\s)]+)\\//g;
+
+  function swapCdn(text) {
+    var n = 0;
+    var out = text.replace(RAW_RE, function (m, proto, user, repo, branch) {
+      n += 1;
+      return proto + 'cdn.jsdelivr.net/gh/' + user + '/' + repo + '@' + branch + '/';
+    });
+    return { text: out, count: n };
+  }
+
+  ed.addEventListener('paste', function (e) {
+    var t = e.clipboardData && e.clipboardData.getData('text/plain');
+    if (!t || t.indexOf('raw.githubusercontent.com') === -1) return;
+    e.preventDefault();
+    var r = swapCdn(t);
+    insertText(r.text);
+    if (r.count) toast('已自动替换 ' + r.count + ' 处图床域名（raw.githubusercontent → jsdelivr）');
+  });
+
   /* ================= 本地文件 / Obsidian 笔记库 ================= */
   function idbOpen() {
     return new Promise(function (resolve, reject) {
@@ -1079,6 +1253,16 @@ function pageHtml() {
       insertBlock('| 表头一 | 表头二 |\\n| --- | --- |\\n| 内容 | 内容 |');
     },
     hr: function () { insertBlock('---'); },
+    cdnswap: function () {
+      var r = swapCdn(ed.value);
+      if (!r.count) { toast('没有发现 raw.githubusercontent.com 链接'); return; }
+      ed.focus();
+      ed.setSelectionRange(0, ed.value.length);
+      insertText(r.text);
+      ed.setSelectionRange(0, 0);
+      ed.scrollTop = 0;
+      toast('已替换 ' + r.count + ' 处图床域名（raw.githubusercontent → jsdelivr）');
+    },
     openfile: function () { openLocalFile(); },
     vault: function () { openVault(false); },
     sample: function () {
