@@ -2,10 +2,7 @@
 // 排版主题对照 mdnice 默认主题（参考文章实测提取）：正文 15px/1.8em 纯黑，
 // 强调色 #ef7060，H2 黑底白字块，代码块 Atom One Dark + Mac 窗口三点。
 
-const MAC_DOTS_B64 =
-  'PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0NSIgaGVpZ2h0PSIxMyI+PGNpcmNsZSBjeD0iNi41IiBjeT0iNi41IiByPSI2IiBmaWxsPSIjZmY1ZjU2Ii8+PGNpcmNsZSBjeD0iMjIuNSIgY3k9IjYuNSIgcj0iNiIgZmlsbD0iI2ZmYmQyZSIvPjxjaXJjbGUgY3g9IjM4LjUiIGN5PSI2LjUiIHI9IjYiIGZpbGw9IiMyN2M5M2YiLz48L3N2Zz4=';
-
-function pageHtml() {
+function pageHtml(version, releaseDate) {
   return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -464,7 +461,6 @@ function pageHtml() {
   'use strict';
 
   /* ================= 公众号内联样式主题（参考 mdnice 默认主题实测值） ================= */
-  var MAC_DOTS = 'data:image/svg+xml;base64,${MAC_DOTS_B64}';
   var CODE_FONT = "font-family:Consolas,Monaco,Menlo,monospace;";
 
   var S = {
@@ -484,8 +480,11 @@ function pageHtml() {
     codespan: 'color:#ef7060;font-size:14px;line-height:1.8em;letter-spacing:0em;background-color:rgba(27,31,35,0.05);padding:2px 4px;margin:0 2px;border-radius:4px;word-break:break-all;' + CODE_FONT,
     link: 'color:#576b95;text-decoration:none;border-bottom:1px solid rgba(87,107,149,0.35);',
     blockquote: 'margin:20px 0;padding:10px 10px 10px 20px;border-left:3px solid rgba(0,0,0,0.4);background-color:rgba(0,0,0,0.05);display:block;overflow-x:auto;',
-    pre: 'margin:12px 0;padding:0;border-radius:5px;box-shadow:rgba(0,0,0,0.55) 0px 2px 10px;background-color:#282c34;background-image:url(MACDOTS);background-repeat:no-repeat;background-position:14px 13px;text-align:left;',
-    code: 'display:block;overflow-x:auto;padding:16px;padding-top:36px;color:#abb2bf;font-size:12px;line-height:1.9;white-space:nowrap;-webkit-overflow-scrolling:touch;' + CODE_FONT,
+    codeWrap: 'margin:12px 0;border-radius:5px;box-shadow:rgba(0,0,0,0.55) 0px 2px 10px;background-color:#282c34;overflow:hidden;',
+    codeBar: 'padding:13px 16px 3px;line-height:1;',
+    dot: 'font-size:15px;line-height:1;margin-right:6px;vertical-align:middle;',
+    pre: 'margin:0;padding:0;background:transparent;text-align:left;',
+    code: 'display:block;overflow-x:auto;padding:12px 16px 16px;color:#abb2bf;font-size:12px;line-height:1.9;white-space:nowrap;-webkit-overflow-scrolling:touch;' + CODE_FONT,
     ulist: 'list-style-type:disc;margin:8px 0;padding-left:25px;color:#000000;',
     olist: 'list-style-type:decimal;margin:8px 0;padding-left:25px;color:#000000;',
     li: 'margin:5px 0;text-align:left;',
@@ -498,7 +497,6 @@ function pageHtml() {
     th: 'border:1px solid #cccccc;padding:5px 10px;min-width:85px;background-color:#f0f0f0;color:#000000;font-size:15px;line-height:1.5em;font-weight:bold;',
     td: 'border:1px solid #cccccc;padding:5px 10px;min-width:85px;color:#000000;font-size:15px;line-height:1.5em;'
   };
-  S.pre = S.pre.replace('MACDOTS', MAC_DOTS);
 
   /* Atom One Dark：highlight.js class -> 内联颜色（微信会剥 class，必须内联化） */
   var HL = {
@@ -616,8 +614,14 @@ function pageHtml() {
     },
     code: function (token) {
       var lang = (token.lang || '').trim().split(/\\s+/)[0].toLowerCase();
-      return '<pre style="' + S.pre + '"><code style="' + S.code + '">' +
-        highlightInline(token.text, lang) + '</code></pre>';
+      return '<section style="' + S.codeWrap + '">' +
+        '<section style="' + S.codeBar + '">' +
+        '<span style="' + S.dot + 'color:#ff5f56;">&#9679;</span>' +
+        '<span style="' + S.dot + 'color:#febc2e;">&#9679;</span>' +
+        '<span style="' + S.dot + 'color:#27c93f;margin-right:0;">&#9679;</span>' +
+        '</section>' +
+        '<pre style="' + S.pre + '"><code style="' + S.code + '">' +
+        highlightInline(token.text, lang) + '</code></pre></section>';
     },
     codespan: function (token) {
       return '<code style="' + S.codespan + '">' + esc(token.text) + '</code>';
@@ -861,8 +865,8 @@ function pageHtml() {
   });
 
   /* ================= 关于 / 帮助 弹窗 ================= */
-  var APP_VERSION = 'v0.0.2';
-  var APP_DATE = '20260708';
+  var APP_VERSION = 'v${version}（${releaseDate}）';
+  var APP_DATE = '${releaseDate}';
   var REPO_URL = 'https://github.com/wbsu2003/markdown2wechat';
 
   var LOGO_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">' +

@@ -1,4 +1,5 @@
 import { pageHtml } from './page.js';
+import pkg from '../package.json';
 import markedSrc from './vendor/marked.umd.js.txt';
 import hljsSrc from './vendor/highlight.min.js.txt';
 
@@ -12,7 +13,7 @@ export default {
     const { pathname } = new URL(request.url);
 
     if (pathname === '/' || pathname === '') {
-      return new Response(pageHtml(), {
+      return new Response(pageHtml(pkg.version, pkg.releaseDate), {
         headers: { 'Content-Type': 'text/html; charset=utf-8' },
       });
     }

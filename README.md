@@ -4,7 +4,7 @@
 
 部署在 Cloudflare Workers 上的 Markdown → 微信公众号排版工具。左侧写 Markdown，右侧实时渲染公众号效果，一键复制到公众号后台粘贴即用。
 
-当前版本：**v0.0.2**（20260708）
+当前版本：**v0.0.3**（20260711）
 
 ## 功能
 
@@ -31,7 +31,7 @@
 | H2 | 黑底白字标签块（`#212122` 背景、18px、行高 2.4em、右下角 40px 圆弧） |
 | H3 | 16px 加粗 + 左侧黑色竖条 |
 | 引用块 | 左侧 3px 深灰竖线 + 5% 黑色底 |
-| 代码块 | **苹果风格**：Mac 红黄绿窗口按钮（base64 SVG 背景图）+ Atom One Dark 配色（`#282c34` 底）+ macOS 窗口阴影 |
+| 代码块 | **苹果风格**：Mac 红黄绿窗口按钮（三个 `●` 文字圆点）+ Atom One Dark 配色（`#282c34` 底，套在外层 `<section>` 上）+ macOS 窗口阴影 |
 | 链接 | 微信蓝 `#576b95` + 下划虚线 |
 | 图片 | 居中 + 圆角，alt 文字自动作为居中灰色图注 |
 
@@ -42,7 +42,7 @@
 - marked 自定义 renderer 直接输出**每个标签都带内联 style** 的 HTML
 - highlight.js 的高亮结果渲染到临时 DOM 后，把 `hljs-*` class 逐个换算成内联 `color`
 - 代码块内换行转 `<br>`、空格转 `&nbsp;`（微信会吞 `pre` 的原始换行和连续空格）
-- Mac 三点用 `background-image: url(data:image/svg+xml;base64,…)` 内联（`<svg>` 标签会被微信剥掉，背景图能存活）
+- Mac 三点用三个 `<span>` 包 `●`（`&#9679;`）+ `color` 实现，**不能用 CSS 画圆**（靠 `background`/`border-radius`/`inline-block` 的**空** `<span>` 会被微信剥掉 `display` 后塌陷成 0 尺寸、甚至当空标签删除，圆点整体消失）；深色底色移到外层 `<section>`：微信会剥掉内联 `background-image`、并覆盖 `<pre>` 自带的背景色，所以底色和圆点都不能放在 `<pre>` 上（否则粘贴到公众号后背景和圆点会全部丢失）
 - 代码块使用 `display: block + overflow-x: auto`（参考文章原版的 `-webkit-box` 是老式 flex 布局，会把代码行横向排列导致显示错乱，此处已修正）
 - 图片请使用图床外链：粘贴时公众号会自动转存 http(s) 外链图片
 
