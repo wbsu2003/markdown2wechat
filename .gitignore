@@ -3,6 +3,7 @@ node_modules/
 .dev.vars
 *.log
 dist/
+.playwright-mcp/
 
 # 本地协作辅助文件（Claude 项目上下文备忘），不提交到 repo
 CLAUDE.md

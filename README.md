@@ -4,7 +4,7 @@
 
 部署在 Cloudflare Workers 上的 Markdown → 微信公众号排版工具。左侧写 Markdown，右侧实时渲染公众号效果，一键复制到公众号后台粘贴即用。
 
-当前版本：**v0.0.3**（20260711）
+当前版本：**v0.0.5**（20260712）
 
 ## 功能
 
@@ -41,7 +41,7 @@
 
 - marked 自定义 renderer 直接输出**每个标签都带内联 style** 的 HTML
 - highlight.js 的高亮结果渲染到临时 DOM 后，把 `hljs-*` class 逐个换算成内联 `color`
-- 代码块内换行转 `<br>`、空格转 `&nbsp;`（微信会吞 `pre` 的原始换行和连续空格）
+- 代码块内换行转 `<br>`、空格转 `&nbsp;`（NBSP ` `）；但**只转 NBSP 还不够**：公众号在**粘贴时或点保存时**（两种情况都会）把“内容全是空白”的 `<span>` 当空标签删掉（与 `color` 无关），里面 NBSP 又暴露成裸文本被吞。正解是**按行整体包裹**——`wrapLines` 把每一行（缩进 + 该行所有高亮 token）包进一个带 `color` 的行 `<span>`：行内有可见 token 就不是空标签，缩进与 `key: value` 间的空格随之全部存活；空行塌成空 span、只剩 `<br>` 正好是空行。（实证：注释含 `#`/字母等可见字符故连内部空格都活，纯缩进空白 span 被删则 `litepan:` 顶格、`image: x` 变 `image:x`。）
 - Mac 三点用三个 `<span>` 包 `●`（`&#9679;`）+ `color` 实现，**不能用 CSS 画圆**（靠 `background`/`border-radius`/`inline-block` 的**空** `<span>` 会被微信剥掉 `display` 后塌陷成 0 尺寸、甚至当空标签删除，圆点整体消失）；深色底色移到外层 `<section>`：微信会剥掉内联 `background-image`、并覆盖 `<pre>` 自带的背景色，所以底色和圆点都不能放在 `<pre>` 上（否则粘贴到公众号后背景和圆点会全部丢失）
 - 代码块使用 `display: block + overflow-x: auto`（参考文章原版的 `-webkit-box` 是老式 flex 布局，会把代码行横向排列导致显示错乱，此处已修正）
 - 图片请使用图床外链：粘贴时公众号会自动转存 http(s) 外链图片
@@ -85,3 +85,13 @@ cp node_modules/marked/lib/marked.umd.js src/vendor/marked.umd.js.txt
 # highlight.js：从 cdnjs 下载新版本
 curl -sL "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js" -o src/vendor/highlight.min.js.txt
 ```
+
+## 更新历史
+
+- **v0.0.5**（20260712）
+  - 修复代码块粘贴到公众号后**缩进、`key: value` 间空格被吞**：改用「按行整体包裹」——每行连同缩进包进一个带 `color` 的行 `<span>`，行内有可见 token 就不会被当空标签删除，行内空格随之全部保留；空行塌成空 span 被删、只留 `<br>` 正好是空行。（v0.0.4 的「给空格单独包一层同色 `<span>`」对纯缩进会生成“纯空白 span”，仍被公众号当空标签删掉，故未彻底解决。）
+  - 修复「关于」弹窗版本号**日期重复**显示（`v0.0.4（20260712）（20260712）` → `v0.0.5（20260712）`）。
+- **v0.0.4**（20260712）
+  - 首次尝试修复代码块空格被公众号吞：空格转 NBSP 并包一层同色 `<span>`。对含可见字符的行有效，但纯缩进行仍被清洗——由 v0.0.5 彻底解决。
+- **v0.0.3**（20260711）
+  - 基线版本：Markdown → 公众号排版、左右实时预览、mdnice 默认主题、代码块苹果窗口风格、Obsidian 笔记导入、图床域名替换、front matter 剥离等（详见上文「功能」）。

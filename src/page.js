@@ -572,28 +572,56 @@ function pageHtml(version, releaseDate) {
       if (style) el.setAttribute('style', style);
       el.removeAttribute('class');
     }
-    // 文本节点：\\n -> <br>，空格 -> nbsp（微信编辑器会吞 pre 里的原始换行与连续空格）
-    convertWhitespace(box);
-    return box.innerHTML;
+    // 高亮结果按行重组（每行整体包一个带 color 的 <span>，避免出现“纯空白 <span>”被公众号删）
+    return wrapLines(box);
   }
 
-  function convertWhitespace(node) {
-    var children = Array.prototype.slice.call(node.childNodes);
-    for (var i = 0; i < children.length; i++) {
-      var child = children[i];
-      if (child.nodeType === 3) {
-        var text = child.textContent.replace(/\\t/g, '    ');
-        var parts = text.split('\\n');
-        var frag = document.createDocumentFragment();
-        for (var j = 0; j < parts.length; j++) {
-          if (j > 0) frag.appendChild(document.createElement('br'));
-          if (parts[j]) frag.appendChild(document.createTextNode(parts[j].replace(/ /g, '\\u00a0')));
-        }
-        child.parentNode.replaceChild(frag, child);
-      } else if (child.nodeType === 1) {
-        convertWhitespace(child);
+  /* 把高亮结果按行重组：每行整体包一个带 color 的 <span>。公众号会把“内容全是空白”的
+     <span> 当空标签删掉（跟有没有 color 无关，实测证据：注释 span 有可见字符故整段连内部
+     空格都活，而纯缩进 span 被删使空格塌掉）。所以缩进 / token 间空格绝不能自成空白 span，
+     而是和该行的可见 token 同处一个非空的行 <span> 内整体存活；空行塌成空 span 被删、只剩
+     <br>，正好呈现为空行。 */
+  function collectSegments(node, inherited, out) {
+    var st = inherited;
+    if (node.nodeType === 1 && node.nodeName === 'SPAN') {
+      var s = node.getAttribute('style');
+      if (s) st = (inherited || '') + s; // 内层样式在后覆盖同名属性、保留外层独有（如 italic）
+    }
+    var kids = node.childNodes;
+    for (var i = 0; i < kids.length; i++) {
+      var k = kids[i];
+      if (k.nodeType === 3) out.push({ text: k.textContent, style: st });
+      else if (k.nodeType === 1) collectSegments(k, st, out);
+    }
+  }
+
+  function wrapLines(box) {
+    var segs = [];
+    collectSegments(box, null, segs);
+    var lines = [[]];
+    for (var i = 0; i < segs.length; i++) {
+      var pieces = segs[i].text.replace(/\\t/g, '    ').split('\\n');
+      for (var p = 0; p < pieces.length; p++) {
+        if (p > 0) lines.push([]);
+        if (pieces[p]) lines[lines.length - 1].push({ text: pieces[p], style: segs[i].style });
       }
     }
+    var html = '';
+    for (var L = 0; L < lines.length; L++) {
+      if (L > 0) html += '<br>';
+      html += '<span style="color:#abb2bf;">';
+      var row = lines[L];
+      for (var t = 0; t < row.length; t++) {
+        var txt = esc(row[t].text).replace(/ /g, '\\u00a0');
+        if (row[t].style && row[t].style !== 'color:#abb2bf;') {
+          html += '<span style="' + row[t].style + '">' + txt + '</span>';
+        } else {
+          html += txt;
+        }
+      }
+      html += '</span>';
+    }
+    return html;
   }
 
   /* ================= marked 渲染器：直接输出带内联样式的 HTML ================= */
@@ -865,7 +893,7 @@ function pageHtml(version, releaseDate) {
   });
 
   /* ================= 关于 / 帮助 弹窗 ================= */
-  var APP_VERSION = 'v${version}（${releaseDate}）';
+  var APP_VERSION = 'v${version}';
   var APP_DATE = '${releaseDate}';
   var REPO_URL = 'https://github.com/wbsu2003/markdown2wechat';
 
