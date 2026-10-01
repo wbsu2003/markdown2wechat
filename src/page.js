@@ -1,5 +1,5 @@
 // 编辑器单页：左侧 Markdown 输入，右侧实时渲染公众号排版（带内联样式，复制即用）。
-// 排版主题对照 mdnice 默认主题（参考文章实测提取）：正文 15px/1.8em 纯黑，
+// 排版主题对照 mdnice 默认主题（参考文章实测提取）：正文 15px、行高 27px 纯黑，
 // 强调色 #ef7060，H2 黑底白字块，代码块 Atom One Dark + Mac 窗口三点。
 
 function pageHtml(version, releaseDate) {
@@ -463,39 +463,48 @@ function pageHtml(version, releaseDate) {
   /* ================= 公众号内联样式主题（参考 mdnice 默认主题实测值） ================= */
   var CODE_FONT = "font-family:Consolas,Monaco,Menlo,monospace;";
 
+  // 行高一律写成绝对 px，并且凡是有 line-height 的标签都自己写死 font-size。
+  // 原因：编辑器自带 h1 { font-size:30px } / h2 { font-size:22.5px } 这类标签选择器，会给我们
+  // 没写字号的标签补上大字号，而行高从外层 section 继承成 27px —— 真机实测产物里的 h1 计算值正是
+  // 字号 30px / 行高 27px，编辑器里确实存在「行高小于字号」的节点。每个标签自带一个小于自身行高的
+  // 字号可以消掉这种错配（副本实测 h1 已变 24px/36px）。
+  // 但注意：后台那条「行高小于字体大小…（实测）」报警和这个错配无关。它的真实判据是
+  // bbox 除以 Range.getClientRects 的矩形个数 是否小于 0.95 倍字号，平台把矩形个数当行数（不按 y
+  // 聚类、零宽也算），所以段内只要出现 strong / code / a 就必报，调行高救不回来（需 38~222px）。
+  // 70 个块零反例拟合，属平台侧缺陷 —— 不要再为它改这里的数值。
   var S = {
-    wrap: 'font-size:15px;color:#000000;line-height:1.8em;letter-spacing:0em;word-break:break-word;text-align:left;',
-    p: 'color:#000000;font-size:15px;line-height:1.8em;letter-spacing:0em;text-align:left;text-indent:0em;margin:0;padding:8px 0;',
-    h1o: 'margin:30px 0 15px;padding:0;display:block;',
-    h1i: 'display:block;font-size:24px;color:#000000;line-height:1.5em;letter-spacing:0em;text-align:left;font-weight:bold;',
-    h2o: 'margin:30px 0 15px;padding:0;display:block;text-align:left;',
-    h2i: 'display:inline-block;font-size:18px;color:#ffffff;background-color:#212122;line-height:2.4em;letter-spacing:0em;padding:0 30px 0 15px;font-weight:bold;border-radius:0 0 40px 0;',
-    h3o: 'margin:25px 0 12px;padding:0;display:block;',
-    h3i: 'display:inline-block;font-size:16px;color:#000000;line-height:1.5em;font-weight:bold;border-left:3px solid #212122;padding-left:8px;',
-    h4o: 'margin:20px 0 10px;padding:0;display:block;',
-    h4i: 'display:block;font-size:15px;color:#000000;line-height:1.5em;font-weight:bold;',
+    wrap: 'font-size:15px;color:#000000;line-height:27px;letter-spacing:0em;word-break:break-word;text-align:left;',
+    p: 'color:#000000;font-size:15px;line-height:27px;letter-spacing:0em;text-align:left;text-indent:0em;margin:0;padding:8px 0;',
+    h1o: 'margin:30px 0 15px;padding:0;display:block;font-size:24px;line-height:36px;',
+    h1i: 'display:block;font-size:24px;color:#000000;line-height:36px;letter-spacing:0em;text-align:left;font-weight:bold;',
+    h2o: 'margin:30px 0 15px;padding:0;display:block;text-align:left;font-size:18px;line-height:43px;',
+    h2i: 'display:inline-block;font-size:18px;color:#ffffff;background-color:#212122;line-height:43px;letter-spacing:0em;padding:0 30px 0 15px;font-weight:bold;border-radius:0 0 40px 0;',
+    h3o: 'margin:25px 0 12px;padding:0;display:block;font-size:16px;line-height:24px;',
+    h3i: 'display:inline-block;font-size:16px;color:#000000;line-height:24px;font-weight:bold;border-left:3px solid #212122;padding-left:8px;',
+    h4o: 'margin:20px 0 10px;padding:0;display:block;font-size:15px;line-height:23px;',
+    h4i: 'display:block;font-size:15px;color:#000000;line-height:23px;font-weight:bold;',
     strong: 'color:#ef7060;font-weight:bold;',
     em: 'color:#ef7060;font-style:italic;',
     del: 'color:#999999;text-decoration:line-through;',
-    codespan: 'color:#ef7060;font-size:14px;line-height:1.8em;letter-spacing:0em;background-color:rgba(27,31,35,0.05);padding:2px 4px;margin:0 2px;border-radius:4px;word-break:break-all;' + CODE_FONT,
+    codespan: 'color:#ef7060;font-size:14px;line-height:25px;letter-spacing:0em;background-color:rgba(27,31,35,0.05);padding:2px 4px;margin:0 2px;border-radius:4px;word-break:break-all;' + CODE_FONT,
     link: 'color:#576b95;text-decoration:none;border-bottom:1px solid rgba(87,107,149,0.35);',
-    blockquote: 'margin:20px 0;padding:10px 10px 10px 20px;border-left:3px solid rgba(0,0,0,0.4);background-color:rgba(0,0,0,0.05);display:block;overflow-x:auto;',
-    codeWrap: 'margin:12px 0;border-radius:5px;box-shadow:rgba(0,0,0,0.55) 0px 2px 10px;background-color:#282c34;overflow:hidden;',
-    codeBar: 'padding:13px 16px 3px;line-height:1;',
-    dot: 'font-size:15px;line-height:1;margin-right:6px;vertical-align:middle;',
-    pre: 'margin:0;padding:0;background:transparent;text-align:left;',
-    code: 'display:block;overflow-x:auto;padding:12px 16px 16px;color:#abb2bf;font-size:12px;line-height:1.9;white-space:nowrap;-webkit-overflow-scrolling:touch;' + CODE_FONT,
-    ulist: 'list-style-type:disc;margin:8px 0;padding-left:25px;color:#000000;',
-    olist: 'list-style-type:decimal;margin:8px 0;padding-left:25px;color:#000000;',
-    li: 'margin:5px 0;text-align:left;',
-    liSec: 'margin:5px 0;color:#010101;font-size:15px;line-height:1.8em;letter-spacing:0em;font-weight:normal;',
+    blockquote: 'margin:20px 0;padding:10px 10px 10px 20px;border-left:3px solid rgba(0,0,0,0.4);background-color:rgba(0,0,0,0.05);display:block;overflow-x:auto;font-size:15px;line-height:27px;',
+    codeWrap: 'margin:12px 0;border-radius:5px;box-shadow:rgba(0,0,0,0.55) 0px 2px 10px;background-color:#282c34;overflow:hidden;font-size:12px;line-height:23px;',
+    codeBar: 'padding:13px 16px 2px;font-size:12px;line-height:16px;',
+    dot: 'font-size:15px;line-height:16px;margin-right:6px;vertical-align:middle;',
+    pre: 'margin:0;padding:0;background:transparent;text-align:left;font-size:12px;line-height:23px;',
+    code: 'display:block;overflow-x:auto;padding:12px 16px 16px;color:#abb2bf;font-size:12px;line-height:23px;white-space:nowrap;-webkit-overflow-scrolling:touch;' + CODE_FONT,
+    ulist: 'list-style-type:disc;margin:8px 0;padding-left:25px;color:#000000;font-size:15px;line-height:27px;',
+    olist: 'list-style-type:decimal;margin:8px 0;padding-left:25px;color:#000000;font-size:15px;line-height:27px;',
+    li: 'margin:5px 0;text-align:left;font-size:15px;line-height:27px;',
+    liSec: 'margin:5px 0;color:#010101;font-size:15px;line-height:27px;letter-spacing:0em;font-weight:normal;',
     img: 'display:block;margin:10px auto 4px;max-width:100%;border-radius:4px;',
-    figcap: 'display:block;text-align:center;font-size:13px;color:#888888;line-height:1.8em;margin:0 0 6px;',
+    figcap: 'display:block;text-align:center;font-size:13px;color:#888888;line-height:23px;margin:0 0 6px;',
     hr: 'margin:20px 0;border:none;border-top:1px solid rgba(0,0,0,0.1);height:1px;',
-    tableWrap: 'margin:15px 0;overflow-x:auto;',
-    table: 'border-collapse:collapse;text-align:left;font-size:14px;width:100%;',
-    th: 'border:1px solid #cccccc;padding:5px 10px;min-width:85px;background-color:#f0f0f0;color:#000000;font-size:15px;line-height:1.5em;font-weight:bold;',
-    td: 'border:1px solid #cccccc;padding:5px 10px;min-width:85px;color:#000000;font-size:15px;line-height:1.5em;'
+    tableWrap: 'margin:15px 0;overflow-x:auto;font-size:14px;line-height:23px;',   // data-ignore-width：开源 CLI 会把 th 当宽度候选跨三屏量宽，th 有 min-width 时报 #1.4；这是规范 1.4.4 的官方豁免位，仅针对 CLI，真机未验证
+    table: 'border-collapse:collapse;text-align:left;font-size:14px;line-height:23px;width:100%;',
+    th: 'border:1px solid #cccccc;padding:5px 10px;min-width:85px;background-color:#f0f0f0;color:#000000;font-size:15px;line-height:23px;font-weight:bold;',
+    td: 'border:1px solid #cccccc;padding:5px 10px;min-width:85px;color:#000000;font-size:15px;line-height:23px;'
   };
 
   /* Atom One Dark：highlight.js class -> 内联颜色（微信会剥 class，必须内联化） */
@@ -691,7 +700,7 @@ function pageHtml(version, releaseDate) {
       return '<hr style="' + S.hr + '"/>';
     },
     table: function (token) {
-      var html = '<section style="' + S.tableWrap + '"><table style="' + S.table + '"><thead><tr>';
+      var html = '<section style="' + S.tableWrap + '" data-ignore-width><table style="' + S.table + '"><thead><tr>';
       var i, j;
       for (i = 0; i < token.header.length; i++) {
         html += cell(this, token.header[i], S.th, 'th');
@@ -742,6 +751,26 @@ function pageHtml(version, releaseDate) {
     return parts.join('');
   }
 
+  // 给 img 补 data-w / data-ratio：依据来自开源校验器 wechatjs/verify-article-structure-spec，
+  // 它在测量前会把「加载不出来、又没有任何尺寸信息」的 img 换成 1x1 透明 SVG，于是「图片 + 图注」
+  // 那段被聚成 2 行、内容高只有约 28px，平均行高 14px 小于阈值 0.95 乘字号 15px 而判叠字。
+  // 补上 data-w 后同一算法不再报（本地 A/B 已复现），这也是微信自己转存图片时在写的属性。
+  // ⚠ 后台内建检测器已用真机数据证实不是这套 CLI，所以本条属针对 CLI 的预防性加固，真机未验证；
+  // 加载失败的图拿不到 naturalWidth，无法标注。
+  function annotateImages(scope) {
+    var imgs = scope.querySelectorAll('img');
+    Array.prototype.forEach.call(imgs, function (img) {
+      function stamp() {
+        if (img.getAttribute('data-w')) return;
+        if (!img.naturalWidth || !img.naturalHeight) return;
+        img.setAttribute('data-w', String(img.naturalWidth));
+        img.setAttribute('data-ratio', (img.naturalHeight / img.naturalWidth).toFixed(4));
+      }
+      if (img.complete) stamp();
+      else img.addEventListener('load', stamp, { once: true });
+    });
+  }
+
   function renderNow() {
     var md = ed.value;
     stat.textContent = md.length + ' 字';
@@ -757,6 +786,7 @@ function pageHtml(version, releaseDate) {
       html = '<p style="color:#e06c75">渲染出错：' + esc(e.message) + '</p>';
     }
     preview.innerHTML = '<section style="' + S.wrap + '">' + html + '</section>';
+    annotateImages(preview);
   }
 
   ed.addEventListener('input', function () {
