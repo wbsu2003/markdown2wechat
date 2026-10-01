@@ -154,6 +154,9 @@ function pageHtml(version, releaseDate) {
     display: flex;
     justify-content: space-between;
   }
+  .render-mode { font-size:12px; color:#4b5563; }
+  .render-mode select { max-width:180px; padding:3px; border:1px solid #e5e7eb; border-radius:4px; background:#fff; color:inherit; }
+  .compat-note { padding:10px 18px; font-size:12px; line-height:1.7; color:#805b20; background:#fff8e6; border-bottom:1px solid #f1e5c9; }
   #preview {
     padding: 20px 18px 36px;
     font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
@@ -410,7 +413,14 @@ function pageHtml(version, releaseDate) {
   <div class="divider" id="divider" title="拖动调整宽度"></div>
   <section class="pane preview-pane" id="previewPane">
     <div class="phone">
-      <div class="phone-head"><span>公众号预览</span><span>所见即所得</span></div>
+      <div class="phone-head"><span>公众号预览</span><label class="render-mode">排版
+        <select id="renderMode" aria-describedby="compatNote">
+          <option value="styled">原样排版</option>
+          <option value="color">保色排版（实验）</option>
+          <option value="simple">简洁排版（实验）</option>
+        </select>
+      </label></div>
+      <div class="compat-note" id="compatNote" role="status" hidden>用于减少行内标签造成的结构误报，不保证通过微信检测。去掉局部加粗、斜体、行内代码底色和代码高亮；删除线改为「〔已删除：…〕」，链接改为文字网址，标题底色铺满。保留列表、表格及代码缩进；图片按正文宽度等比显示，小图可能放大。预览即复制结果；原始 Markdown 不变。</div>
       <div id="preview"></div>
     </div>
   </section>
@@ -468,10 +478,9 @@ function pageHtml(version, releaseDate) {
   // 没写字号的标签补上大字号，而行高从外层 section 继承成 27px —— 真机实测产物里的 h1 计算值正是
   // 字号 30px / 行高 27px，编辑器里确实存在「行高小于字号」的节点。每个标签自带一个小于自身行高的
   // 字号可以消掉这种错配（副本实测 h1 已变 24px/36px）。
-  // 但注意：后台那条「行高小于字体大小…（实测）」报警和这个错配无关。它的真实判据是
-  // bbox 除以 Range.getClientRects 的矩形个数 是否小于 0.95 倍字号，平台把矩形个数当行数（不按 y
-  // 聚类、零宽也算），所以段内只要出现 strong / code / a 就必报，调行高救不回来（需 38~222px）。
-  // 70 个块零反例拟合，属平台侧缺陷 —— 不要再为它改这里的数值。
+  // 历史后台追踪中，70 个块的告警与 bbox / Range.getClientRects().length < 0.95 * 字号吻合。
+  // 矩形个数不等于行数：strong / code / a 会产生多个片段，单行也可能误报，调行高不可靠。
+  // 这是历史数据拟合而非官方公开算法；不要为它改主题数值，简洁模式只作结构降级实验。
   var S = {
     wrap: 'font-size:15px;color:#000000;line-height:27px;letter-spacing:0em;word-break:break-word;text-align:left;',
     p: 'color:#000000;font-size:15px;line-height:27px;letter-spacing:0em;text-align:left;text-indent:0em;margin:0;padding:8px 0;',
@@ -554,7 +563,7 @@ function pageHtml(version, releaseDate) {
   }
 
   /* 代码高亮 -> 内联样式 + 微信兼容的换行/空格处理 */
-  function highlightInline(code, lang) {
+  function highlightBox(code, lang) {
     var raw;
     try {
       if (lang && window.hljs.getLanguage(lang)) {
@@ -581,8 +590,12 @@ function pageHtml(version, releaseDate) {
       if (style) el.setAttribute('style', style);
       el.removeAttribute('class');
     }
-    // 高亮结果按行重组（每行整体包一个带 color 的 <span>，避免出现“纯空白 <span>”被公众号删）
-    return wrapLines(box);
+    return box;
+  }
+
+  function highlightInline(code, lang) {
+    // 原样模式仍使用行 span；保色模式将同一份高亮结果展开为直接的段落行。
+    return wrapLines(highlightBox(code, lang));
   }
 
   /* 把高亮结果按行重组：每行整体包一个带 color 的 <span>。公众号会把“内容全是空白”的
@@ -604,7 +617,7 @@ function pageHtml(version, releaseDate) {
     }
   }
 
-  function wrapLines(box) {
+  function splitCodeRows(box) {
     var segs = [];
     collectSegments(box, null, segs);
     var lines = [[]];
@@ -615,6 +628,11 @@ function pageHtml(version, releaseDate) {
         if (pieces[p]) lines[lines.length - 1].push({ text: pieces[p], style: segs[i].style });
       }
     }
+    return lines;
+  }
+
+  function wrapLines(box) {
+    var lines = splitCodeRows(box);
     var html = '';
     for (var L = 0; L < lines.length; L++) {
       if (L > 0) html += '<br>';
@@ -634,6 +652,41 @@ function pageHtml(version, releaseDate) {
   }
 
   /* ================= marked 渲染器：直接输出带内联样式的 HTML ================= */
+  // 可选的结构降级，而非绕过检测：减少行内 Range 矩形，正常模式完全保留原样。
+  var simpleMode = false;
+  var colorMode = false;
+  function simpleCode(code) {
+    // 不使用高亮 token/span；每行直接含文本，缩进仍与可见字符处于同一节点。
+    var rows = code.replace(/\\t/g, '    ').split('\\n');
+    var style = 'margin:0;padding:0;color:#abb2bf;font-size:12px;line-height:23px;white-space:pre;' + CODE_FONT;
+    return '<section style="' + S.codeWrap + 'padding:12px 16px;overflow-x:auto;">' + rows.map(function (row) {
+      return '<p style="' + style + '">' + (row.trim() ? esc(row).replace(/ /g, '\\u00a0') : '<br>') + '</p>';
+    }).join('') + '</section>';
+  }
+  function colorCode(code, lang) {
+    var rows = splitCodeRows(highlightBox(code, lang));
+    var style = 'margin:0;padding:0;color:#abb2bf;font-size:12px;line-height:23px;white-space:pre;' + CODE_FONT;
+    function textHtml(text) { return esc(text).replace(/ /g, String.fromCharCode(160)); }
+    return '<section style="' + S.codeWrap + '">' +
+      '<section style="' + S.codeBar + '">' +
+      '<span style="' + S.dot + 'color:#ff5f56;">&#9679;</span>' +
+      '<span style="' + S.dot + 'color:#febc2e;">&#9679;</span>' +
+      '<span style="' + S.dot + 'color:#27c93f;margin-right:0;">&#9679;</span>' +
+      '</section><section style="' + S.code + '">' + rows.map(function (row) {
+      var text = row.map(function (part) { return part.text; }).join('');
+      var visible = row.filter(function (part) { return part.text.trim(); });
+      var firstStyle = visible.length ? (visible[0].style || '') : '';
+      var uniform = visible.every(function (part) { return (part.style || '') === firstStyle; });
+      // 单色行直接给 p 上色；多色行保留平铺 token，挂载后再统一混排文本结构。
+      var content = '<br>';
+      if (text.trim()) {
+        content = uniform ? textHtml(text) : row.map(function (part) {
+          return part.style ? '<span style="' + part.style + '">' + textHtml(part.text) + '</span>' : textHtml(part.text);
+        }).join('');
+      }
+      return '<p style="' + style + (uniform ? firstStyle : '') + '">' + content + '</p>';
+    }).join('') + '</section></section>';
+  }
   var renderer = {
     paragraph: function (token) {
       return '<p style="' + S.p + '">' + this.parser.parseInline(token.tokens) + '</p>';
@@ -641,6 +694,12 @@ function pageHtml(version, releaseDate) {
     heading: function (token) {
       var inner = this.parser.parseInline(token.tokens);
       var d = token.depth;
+      if (simpleMode || colorMode) {
+        d = Math.min(d, 4);
+        // Retain the flat block structure; constrain long headings including padding.
+        if (colorMode && d === 2) return '<h2 style="' + S.h2o + S.h2i + 'display:block;width:fit-content;max-width:100%;box-sizing:border-box;">' + inner + '</h2>';
+        return '<h' + d + ' style="' + S['h' + d + 'o'] + S['h' + d + 'i'] + 'display:block;">' + inner + '</h' + d + '>';
+      }
       if (d === 1) return '<h1 style="' + S.h1o + '"><span style="' + S.h1i + '">' + inner + '</span></h1>';
       if (d === 2) return '<h2 style="' + S.h2o + '"><span style="' + S.h2i + '">' + inner + '</span></h2>';
       if (d === 3) return '<h3 style="' + S.h3o + '"><span style="' + S.h3i + '">' + inner + '</span></h3>';
@@ -650,7 +709,9 @@ function pageHtml(version, releaseDate) {
       return '<blockquote style="' + S.blockquote + '">' + this.parser.parse(token.tokens) + '</blockquote>';
     },
     code: function (token) {
+      if (simpleMode) return simpleCode(token.text);
       var lang = (token.lang || '').trim().split(/\\s+/)[0].toLowerCase();
+      if (colorMode) return colorCode(token.text, lang);
       return '<section style="' + S.codeWrap + '">' +
         '<section style="' + S.codeBar + '">' +
         '<span style="' + S.dot + 'color:#ff5f56;">&#9679;</span>' +
@@ -661,24 +722,35 @@ function pageHtml(version, releaseDate) {
         highlightInline(token.text, lang) + '</code></pre></section>';
     },
     codespan: function (token) {
+      if (simpleMode) return esc(token.text);
+      if (colorMode) return '<span style="' + S.codespan + '">' + esc(token.text) + '</span>';
       return '<code style="' + S.codespan + '">' + esc(token.text) + '</code>';
     },
     strong: function (token) {
+      if (simpleMode) return this.parser.parseInline(token.tokens);
       return '<strong style="' + S.strong + '">' + this.parser.parseInline(token.tokens) + '</strong>';
     },
     em: function (token) {
+      if (simpleMode) return this.parser.parseInline(token.tokens);
       return '<em style="' + S.em + '">' + this.parser.parseInline(token.tokens) + '</em>';
     },
     del: function (token) {
+      if (simpleMode) return '〔已删除：' + this.parser.parseInline(token.tokens) + '〕';
       return '<del style="' + S.del + '">' + this.parser.parseInline(token.tokens) + '</del>';
     },
     link: function (token) {
       var text = this.parser.parseInline(token.tokens);
+      if (simpleMode) {
+        var href = esc(token.href || '');
+        return text + (href && text !== href ? '（' + href + '）' : '');
+      }
       return '<a href="' + esc(token.href || '') + '" style="' + S.link + '">' + text + '</a>';
     },
     image: function (token) {
       var alt = token.text || '';
-      var html = '<img src="' + esc(token.href || '') + '" alt="' + esc(alt) + '" style="' + S.img + '"/>';
+      // Both compact modes keep the same width proportion across screens; small images may upscale.
+      var imageStyle = S.img + (simpleMode || colorMode ? 'width:100%;height:auto;' : '');
+      var html = '<img src="' + esc(token.href || '') + '" alt="' + esc(alt) + '" style="' + imageStyle + '"/>';
       if (alt) html += '<span style="' + S.figcap + '">' + esc(alt) + '</span>';
       return html;
     },
@@ -694,6 +766,7 @@ function pageHtml(version, releaseDate) {
     },
     listitem: function (item) {
       var inner = this.parser.parse(item.tokens);
+      if (simpleMode || colorMode) return '<li style="' + S.li + '">' + inner + '</li>';
       return '<li style="' + S.li + '"><section style="' + S.liSec + '">' + inner + '</section></li>';
     },
     hr: function () {
@@ -729,6 +802,11 @@ function pageHtml(version, releaseDate) {
   var preview = document.getElementById('preview');
   var previewPane = document.getElementById('previewPane');
   var stat = document.getElementById('stat');
+  var renderMode = document.getElementById('renderMode');
+  var compatNote = document.getElementById('compatNote');
+  var simpleNotice = compatNote.textContent;
+  var colorNotice = '保留强调色、加粗、斜体、删除线、链接及代码高亮；二级标题底色随文字自适应宽度，恢复代码 Mac 三点及原有内边距，代码仍为段落行，混排文字统一包裹以保留配色。行内代码恢复原主题字号、行高与留白。图片按正文宽度等比显示，小图可能放大。已针对采集到的混排检查路径修正结构，用户已反馈本次文章无结构弹窗、外观正常；其他文章与微信后台版本仍需核验，可能再次触发告警；可切回简洁排版。预览即复制结果，原始 Markdown 不变。';
+  var lastRenderedSource = null;
   var renderTimer = null;
   var saveTimer = null;
   var DRAFT_KEY = 'md2wx.draft';
@@ -749,6 +827,26 @@ function pageHtml(version, releaseDate) {
         .replace(/\\[\\[([^\\]]+?)\\]\\]/g, '$1');
     }
     return parts.join('');
+  }
+
+  // 微信公开脚本 4da8090c 的 Ir/De 会把混排 Range 碎片当成行数；
+  // 使用一个显式保色的文本行承载行内内容，避免块元素直接混合裸文本和标签。
+  // 仅保色模式使用；不包裹块级内容/图片，不改文字、空格、字号、行高或 token 样式。
+  function normalizeColorTextRuns(scope) {
+    var inlineTags = /^(SPAN|STRONG|B|EM|I|CODE|A|DEL|S|U|SUB|SUP|MARK|BR)$/;
+    scope.querySelectorAll('p,h1,h2,h3,h4,h5,h6,li,td,th,a,div,section').forEach(function (el) {
+      if (!el.children.length) return;
+      var hasText = Array.from(el.childNodes).some(function (node) {
+        return node.nodeType === 3 && node.textContent.trim();
+      });
+      if (!hasText || !Array.from(el.querySelectorAll('*')).every(function (child) {
+        return inlineTags.test(child.tagName);
+      })) return;
+      var run = document.createElement('span');
+      run.style.color = window.getComputedStyle(el).color;
+      while (el.firstChild) run.appendChild(el.firstChild);
+      el.appendChild(run);
+    });
   }
 
   // 给 img 补 data-w / data-ratio：依据来自开源校验器 wechatjs/verify-article-structure-spec，
@@ -773,6 +871,7 @@ function pageHtml(version, releaseDate) {
 
   function renderNow() {
     var md = ed.value;
+    lastRenderedSource = md;
     stat.textContent = md.length + ' 字';
     md = obsidianize(stripFrontMatter(md));
     if (!md.trim()) {
@@ -786,8 +885,18 @@ function pageHtml(version, releaseDate) {
       html = '<p style="color:#e06c75">渲染出错：' + esc(e.message) + '</p>';
     }
     preview.innerHTML = '<section style="' + S.wrap + '">' + html + '</section>';
+    if (colorMode) normalizeColorTextRuns(preview);
     annotateImages(preview);
   }
+
+  renderMode.addEventListener('change', function () {
+    simpleMode = renderMode.value === 'simple';
+    colorMode = renderMode.value === 'color';
+    compatNote.textContent = colorMode ? colorNotice : simpleNotice;
+    compatNote.hidden = !simpleMode && !colorMode;
+    clearTimeout(renderTimer);
+    renderNow();
+  });
 
   ed.addEventListener('input', function () {
     clearTimeout(renderTimer);
@@ -1372,33 +1481,63 @@ function pageHtml(version, releaseDate) {
     toastTimer = setTimeout(function () { toastEl.classList.remove('show'); }, 2200);
   }
 
-  function copyBySelection() {
-    var range = document.createRange();
-    range.selectNodeContents(preview);
+  function copyBySelection(payload) {
+    // 使用同一份快照，避免异步剪贴板失败期间编辑/切换模式导致复制了别的内容。
+    // 显式写双 MIME；老浏览器没有 clipboardData 时仍可从离屏节点原生复制富文本。
+    var stage = document.createElement('div');
+    stage.style.cssText = 'position:fixed;left:-10000px;top:0;width:420px;';
+    stage.innerHTML = payload.html;
+    document.body.appendChild(stage);
     var sel = window.getSelection();
-    sel.removeAllRanges();
-    sel.addRange(range);
+    var saved = [];
+    for (var i = 0; i < sel.rangeCount; i++) saved.push(sel.getRangeAt(i).cloneRange());
+    function onCopy(e) {
+      if (!e.clipboardData) return;
+      e.clipboardData.setData('text/html', payload.html);
+      e.clipboardData.setData('text/plain', payload.text);
+      e.preventDefault();
+    }
+    document.addEventListener('copy', onCopy, true);
     var ok = false;
-    try { ok = document.execCommand('copy'); } catch (e) {}
-    sel.removeAllRanges();
+    try {
+      var range = document.createRange();
+      range.selectNodeContents(stage);
+      sel.removeAllRanges();
+      sel.addRange(range);
+      ok = document.execCommand('copy');
+    } catch (e) {
+      ok = false;
+    } finally {
+      document.removeEventListener('copy', onCopy, true);
+      sel.removeAllRanges();
+      stage.remove();
+      saved.forEach(function (range) { sel.addRange(range); });
+    }
     return ok;
   }
 
   document.getElementById('copyBtn').addEventListener('click', function () {
     if (!ed.value.trim()) { toast('先在左侧写点内容吧'); return; }
-    var html = preview.innerHTML;
+    // 150ms 防抖尚未触发时先渲染最新输入；未改动则不重建图片，保留已加载尺寸。
+    clearTimeout(renderTimer);
+    if (lastRenderedSource !== ed.value) renderNow();
+    if (preview.querySelector('.empty-tip')) { toast('没有可复制的正文'); return; }
+    // text/plain 是富文本的可读降级，不应塞 Markdown 源码触发后台的 Markdown 转换提示。
+    var payload = { html: preview.innerHTML, text: preview.innerText };
+    var success = simpleMode ? '已复制简洁排版，仍需在公众号预览核验' : colorMode ? '已复制保色排版（实验），仍需在公众号验证结构' : '已复制，去公众号编辑器 Ctrl+V 粘贴即可';
+    function fallback() {
+      toast(copyBySelection(payload) ? success : '复制失败，请手动全选预览区复制');
+    }
     if (navigator.clipboard && window.ClipboardItem) {
-      var item = new ClipboardItem({
-        'text/html': new Blob([html], { type: 'text/html' }),
-        'text/plain': new Blob([ed.value], { type: 'text/plain' })
-      });
-      navigator.clipboard.write([item]).then(function () {
-        toast('已复制，去公众号编辑器 Ctrl+V 粘贴即可');
-      }, function () {
-        toast(copyBySelection() ? '已复制，去公众号编辑器粘贴即可' : '复制失败，请手动全选预览区复制');
-      });
+      try {
+        var item = new ClipboardItem({
+          'text/html': new Blob([payload.html], { type: 'text/html' }),
+          'text/plain': new Blob([payload.text], { type: 'text/plain' })
+        });
+        navigator.clipboard.write([item]).then(function () { toast(success); }, fallback);
+      } catch (e) { fallback(); }
     } else {
-      toast(copyBySelection() ? '已复制，去公众号编辑器粘贴即可' : '复制失败，请手动全选预览区复制');
+      fallback();
     }
   });
 

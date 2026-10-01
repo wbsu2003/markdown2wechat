@@ -7,3 +7,13 @@ dist/
 
 # 本地协作辅助文件（Claude 项目上下文备忘），不提交到 repo
 CLAUDE.md
+
+# Browser test artifacts
+test-results/
+playwright-report/
+
+# Local article diagnostic reports (may contain excerpts)
+reports/
+
+# Local user-supplied diagnostic article
+docs/test.md
