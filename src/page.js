@@ -154,8 +154,6 @@ function pageHtml(version, releaseDate) {
     display: flex;
     justify-content: space-between;
   }
-  .render-mode { font-size:12px; color:#4b5563; }
-  .render-mode select { max-width:180px; padding:3px; border:1px solid #e5e7eb; border-radius:4px; background:#fff; color:inherit; }
   .compat-note { padding:10px 18px; font-size:12px; line-height:1.7; color:#805b20; background:#fff8e6; border-bottom:1px solid #f1e5c9; }
   #preview {
     padding: 20px 18px 36px;
@@ -413,14 +411,8 @@ function pageHtml(version, releaseDate) {
   <div class="divider" id="divider" title="拖动调整宽度"></div>
   <section class="pane preview-pane" id="previewPane">
     <div class="phone">
-      <div class="phone-head"><span>公众号预览</span><label class="render-mode">排版
-        <select id="renderMode" aria-describedby="compatNote">
-          <option value="styled">原样排版</option>
-          <option value="color">保色排版（实验）</option>
-          <option value="simple">简洁排版（实验）</option>
-        </select>
-      </label></div>
-      <div class="compat-note" id="compatNote" role="status" hidden>用于减少行内标签造成的结构误报，不保证通过微信检测。去掉局部加粗、斜体、行内代码底色和代码高亮；删除线改为「〔已删除：…〕」，链接改为文字网址，标题底色铺满。保留列表、表格及代码缩进；图片按正文宽度等比显示，小图可能放大。预览即复制结果；原始 Markdown 不变。</div>
+      <div class="phone-head"><span>公众号预览</span></div>
+      <div class="compat-note" id="compatNote" role="note">保留文字配色、代码高亮与苹果三色圆点；二级标题随文字宽度自适应。图片按正文宽度等比显示，小图可能放大。预览即复制结果，粘贴后请核对公众号及手机预览。</div>
       <div id="preview"></div>
     </div>
   </section>
@@ -480,7 +472,7 @@ function pageHtml(version, releaseDate) {
   // 字号可以消掉这种错配（副本实测 h1 已变 24px/36px）。
   // 历史后台追踪中，70 个块的告警与 bbox / Range.getClientRects().length < 0.95 * 字号吻合。
   // 矩形个数不等于行数：strong / code / a 会产生多个片段，单行也可能误报，调行高不可靠。
-  // 这是历史数据拟合而非官方公开算法；不要为它改主题数值，简洁模式只作结构降级实验。
+  // 这是历史数据拟合而非官方公开算法；不要为它改主题数值，保色结构配合真实后台反馈验证。
   var S = {
     wrap: 'font-size:15px;color:#000000;line-height:27px;letter-spacing:0em;word-break:break-word;text-align:left;',
     p: 'color:#000000;font-size:15px;line-height:27px;letter-spacing:0em;text-align:left;text-indent:0em;margin:0;padding:8px 0;',
@@ -501,12 +493,10 @@ function pageHtml(version, releaseDate) {
     codeWrap: 'margin:12px 0;border-radius:5px;box-shadow:rgba(0,0,0,0.55) 0px 2px 10px;background-color:#282c34;overflow:hidden;font-size:12px;line-height:23px;',
     codeBar: 'padding:13px 16px 2px;font-size:12px;line-height:16px;',
     dot: 'font-size:15px;line-height:16px;margin-right:6px;vertical-align:middle;',
-    pre: 'margin:0;padding:0;background:transparent;text-align:left;font-size:12px;line-height:23px;',
     code: 'display:block;overflow-x:auto;padding:12px 16px 16px;color:#abb2bf;font-size:12px;line-height:23px;white-space:nowrap;-webkit-overflow-scrolling:touch;' + CODE_FONT,
     ulist: 'list-style-type:disc;margin:8px 0;padding-left:25px;color:#000000;font-size:15px;line-height:27px;',
     olist: 'list-style-type:decimal;margin:8px 0;padding-left:25px;color:#000000;font-size:15px;line-height:27px;',
     li: 'margin:5px 0;text-align:left;font-size:15px;line-height:27px;',
-    liSec: 'margin:5px 0;color:#010101;font-size:15px;line-height:27px;letter-spacing:0em;font-weight:normal;',
     img: 'display:block;margin:10px auto 4px;max-width:100%;border-radius:4px;',
     figcap: 'display:block;text-align:center;font-size:13px;color:#888888;line-height:23px;margin:0 0 6px;',
     hr: 'margin:20px 0;border:none;border-top:1px solid rgba(0,0,0,0.1);height:1px;',
@@ -593,16 +583,6 @@ function pageHtml(version, releaseDate) {
     return box;
   }
 
-  function highlightInline(code, lang) {
-    // 原样模式仍使用行 span；保色模式将同一份高亮结果展开为直接的段落行。
-    return wrapLines(highlightBox(code, lang));
-  }
-
-  /* 把高亮结果按行重组：每行整体包一个带 color 的 <span>。公众号会把“内容全是空白”的
-     <span> 当空标签删掉（跟有没有 color 无关，实测证据：注释 span 有可见字符故整段连内部
-     空格都活，而纯缩进 span 被删使空格塌掉）。所以缩进 / token 间空格绝不能自成空白 span，
-     而是和该行的可见 token 同处一个非空的行 <span> 内整体存活；空行塌成空 span 被删、只剩
-     <br>，正好呈现为空行。 */
   function collectSegments(node, inherited, out) {
     var st = inherited;
     if (node.nodeType === 1 && node.nodeName === 'SPAN') {
@@ -631,38 +611,7 @@ function pageHtml(version, releaseDate) {
     return lines;
   }
 
-  function wrapLines(box) {
-    var lines = splitCodeRows(box);
-    var html = '';
-    for (var L = 0; L < lines.length; L++) {
-      if (L > 0) html += '<br>';
-      html += '<span style="color:#abb2bf;">';
-      var row = lines[L];
-      for (var t = 0; t < row.length; t++) {
-        var txt = esc(row[t].text).replace(/ /g, '\\u00a0');
-        if (row[t].style && row[t].style !== 'color:#abb2bf;') {
-          html += '<span style="' + row[t].style + '">' + txt + '</span>';
-        } else {
-          html += txt;
-        }
-      }
-      html += '</span>';
-    }
-    return html;
-  }
-
-  /* ================= marked 渲染器：直接输出带内联样式的 HTML ================= */
-  // 可选的结构降级，而非绕过检测：减少行内 Range 矩形，正常模式完全保留原样。
-  var simpleMode = false;
-  var colorMode = false;
-  function simpleCode(code) {
-    // 不使用高亮 token/span；每行直接含文本，缩进仍与可见字符处于同一节点。
-    var rows = code.replace(/\\t/g, '    ').split('\\n');
-    var style = 'margin:0;padding:0;color:#abb2bf;font-size:12px;line-height:23px;white-space:pre;' + CODE_FONT;
-    return '<section style="' + S.codeWrap + 'padding:12px 16px;overflow-x:auto;">' + rows.map(function (row) {
-      return '<p style="' + style + '">' + (row.trim() ? esc(row).replace(/ /g, '\\u00a0') : '<br>') + '</p>';
-    }).join('') + '</section>';
-  }
+  /* ================= 唯一保色渲染器 ================= */
   function colorCode(code, lang) {
     var rows = splitCodeRows(highlightBox(code, lang));
     var style = 'margin:0;padding:0;color:#abb2bf;font-size:12px;line-height:23px;white-space:pre;' + CODE_FONT;
@@ -694,62 +643,38 @@ function pageHtml(version, releaseDate) {
     heading: function (token) {
       var inner = this.parser.parseInline(token.tokens);
       var d = token.depth;
-      if (simpleMode || colorMode) {
-        d = Math.min(d, 4);
-        // Retain the flat block structure; constrain long headings including padding.
-        if (colorMode && d === 2) return '<h2 style="' + S.h2o + S.h2i + 'display:block;width:fit-content;max-width:100%;box-sizing:border-box;">' + inner + '</h2>';
-        return '<h' + d + ' style="' + S['h' + d + 'o'] + S['h' + d + 'i'] + 'display:block;">' + inner + '</h' + d + '>';
-      }
-      if (d === 1) return '<h1 style="' + S.h1o + '"><span style="' + S.h1i + '">' + inner + '</span></h1>';
-      if (d === 2) return '<h2 style="' + S.h2o + '"><span style="' + S.h2i + '">' + inner + '</span></h2>';
-      if (d === 3) return '<h3 style="' + S.h3o + '"><span style="' + S.h3i + '">' + inner + '</span></h3>';
-      return '<h4 style="' + S.h4o + '"><span style="' + S.h4i + '">' + inner + '</span></h4>';
+      d = Math.min(d, 4);
+      // Keep the flat heading structure and bound long H2 text including padding.
+      var size = d === 2 ? 'width:fit-content;max-width:100%;box-sizing:border-box;' : '';
+      return '<h' + d + ' style="' + S['h' + d + 'o'] + S['h' + d + 'i'] + 'display:block;' + size + '">' + inner + '</h' + d + '>';
     },
     blockquote: function (token) {
       return '<blockquote style="' + S.blockquote + '">' + this.parser.parse(token.tokens) + '</blockquote>';
     },
     code: function (token) {
-      if (simpleMode) return simpleCode(token.text);
       var lang = (token.lang || '').trim().split(/\\s+/)[0].toLowerCase();
-      if (colorMode) return colorCode(token.text, lang);
-      return '<section style="' + S.codeWrap + '">' +
-        '<section style="' + S.codeBar + '">' +
-        '<span style="' + S.dot + 'color:#ff5f56;">&#9679;</span>' +
-        '<span style="' + S.dot + 'color:#febc2e;">&#9679;</span>' +
-        '<span style="' + S.dot + 'color:#27c93f;margin-right:0;">&#9679;</span>' +
-        '</section>' +
-        '<pre style="' + S.pre + '"><code style="' + S.code + '">' +
-        highlightInline(token.text, lang) + '</code></pre></section>';
+      return colorCode(token.text, lang);
     },
     codespan: function (token) {
-      if (simpleMode) return esc(token.text);
-      if (colorMode) return '<span style="' + S.codespan + '">' + esc(token.text) + '</span>';
-      return '<code style="' + S.codespan + '">' + esc(token.text) + '</code>';
+      return '<span style="' + S.codespan + '">' + esc(token.text) + '</span>';
     },
     strong: function (token) {
-      if (simpleMode) return this.parser.parseInline(token.tokens);
       return '<strong style="' + S.strong + '">' + this.parser.parseInline(token.tokens) + '</strong>';
     },
     em: function (token) {
-      if (simpleMode) return this.parser.parseInline(token.tokens);
       return '<em style="' + S.em + '">' + this.parser.parseInline(token.tokens) + '</em>';
     },
     del: function (token) {
-      if (simpleMode) return '〔已删除：' + this.parser.parseInline(token.tokens) + '〕';
       return '<del style="' + S.del + '">' + this.parser.parseInline(token.tokens) + '</del>';
     },
     link: function (token) {
       var text = this.parser.parseInline(token.tokens);
-      if (simpleMode) {
-        var href = esc(token.href || '');
-        return text + (href && text !== href ? '（' + href + '）' : '');
-      }
       return '<a href="' + esc(token.href || '') + '" style="' + S.link + '">' + text + '</a>';
     },
     image: function (token) {
       var alt = token.text || '';
-      // Both compact modes keep the same width proportion across screens; small images may upscale.
-      var imageStyle = S.img + (simpleMode || colorMode ? 'width:100%;height:auto;' : '');
+      // Keep the same width proportion across screens; small images may upscale.
+      var imageStyle = S.img + 'width:100%;height:auto;';
       var html = '<img src="' + esc(token.href || '') + '" alt="' + esc(alt) + '" style="' + imageStyle + '"/>';
       if (alt) html += '<span style="' + S.figcap + '">' + esc(alt) + '</span>';
       return html;
@@ -766,8 +691,7 @@ function pageHtml(version, releaseDate) {
     },
     listitem: function (item) {
       var inner = this.parser.parse(item.tokens);
-      if (simpleMode || colorMode) return '<li style="' + S.li + '">' + inner + '</li>';
-      return '<li style="' + S.li + '"><section style="' + S.liSec + '">' + inner + '</section></li>';
+      return '<li style="' + S.li + '">' + inner + '</li>';
     },
     hr: function () {
       return '<hr style="' + S.hr + '"/>';
@@ -802,10 +726,6 @@ function pageHtml(version, releaseDate) {
   var preview = document.getElementById('preview');
   var previewPane = document.getElementById('previewPane');
   var stat = document.getElementById('stat');
-  var renderMode = document.getElementById('renderMode');
-  var compatNote = document.getElementById('compatNote');
-  var simpleNotice = compatNote.textContent;
-  var colorNotice = '保留强调色、加粗、斜体、删除线、链接及代码高亮；二级标题底色随文字自适应宽度，恢复代码 Mac 三点及原有内边距，代码仍为段落行，混排文字统一包裹以保留配色。行内代码恢复原主题字号、行高与留白。图片按正文宽度等比显示，小图可能放大。已针对采集到的混排检查路径修正结构，用户已反馈本次文章无结构弹窗、外观正常；其他文章与微信后台版本仍需核验，可能再次触发告警；可切回简洁排版。预览即复制结果，原始 Markdown 不变。';
   var lastRenderedSource = null;
   var renderTimer = null;
   var saveTimer = null;
@@ -831,7 +751,7 @@ function pageHtml(version, releaseDate) {
 
   // 微信公开脚本 4da8090c 的 Ir/De 会把混排 Range 碎片当成行数；
   // 使用一个显式保色的文本行承载行内内容，避免块元素直接混合裸文本和标签。
-  // 仅保色模式使用；不包裹块级内容/图片，不改文字、空格、字号、行高或 token 样式。
+  // 不包裹块级内容/图片，不改文字、空格、字号、行高或 token 样式。
   function normalizeColorTextRuns(scope) {
     var inlineTags = /^(SPAN|STRONG|B|EM|I|CODE|A|DEL|S|U|SUB|SUP|MARK|BR)$/;
     scope.querySelectorAll('p,h1,h2,h3,h4,h5,h6,li,td,th,a,div,section').forEach(function (el) {
@@ -885,18 +805,9 @@ function pageHtml(version, releaseDate) {
       html = '<p style="color:#e06c75">渲染出错：' + esc(e.message) + '</p>';
     }
     preview.innerHTML = '<section style="' + S.wrap + '">' + html + '</section>';
-    if (colorMode) normalizeColorTextRuns(preview);
+    normalizeColorTextRuns(preview);
     annotateImages(preview);
   }
-
-  renderMode.addEventListener('change', function () {
-    simpleMode = renderMode.value === 'simple';
-    colorMode = renderMode.value === 'color';
-    compatNote.textContent = colorMode ? colorNotice : simpleNotice;
-    compatNote.hidden = !simpleMode && !colorMode;
-    clearTimeout(renderTimer);
-    renderNow();
-  });
 
   ed.addEventListener('input', function () {
     clearTimeout(renderTimer);
@@ -1524,7 +1435,7 @@ function pageHtml(version, releaseDate) {
     if (preview.querySelector('.empty-tip')) { toast('没有可复制的正文'); return; }
     // text/plain 是富文本的可读降级，不应塞 Markdown 源码触发后台的 Markdown 转换提示。
     var payload = { html: preview.innerHTML, text: preview.innerText };
-    var success = simpleMode ? '已复制简洁排版，仍需在公众号预览核验' : colorMode ? '已复制保色排版（实验），仍需在公众号验证结构' : '已复制，去公众号编辑器 Ctrl+V 粘贴即可';
+    var success = '已复制保色排版，去公众号编辑器 Ctrl+V 粘贴后请核验';
     function fallback() {
       toast(copyBySelection(payload) ? success : '复制失败，请手动全选预览区复制');
     }

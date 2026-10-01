@@ -68,74 +68,6 @@ async function captureClipboard(page, method = 'async') {
   }, method);
 }
 
-// This is the previously observed backend heuristic, NOT an official validator.
-async function geometry(page) {
-  return page.locator('#preview > section > p').first().evaluate(el => {
-    const range = document.createRange();
-    range.selectNodeContents(el);
-    const rects = Array.from(range.getClientRects());
-    const bbox = Math.max(...rects.map(r => r.bottom)) - Math.min(...rects.map(r => r.top));
-    const font = parseFloat(getComputedStyle(el).fontSize);
-    return { rects: rects.length, average: bbox / rects.length, threshold: font * 0.95 };
-  });
-}
-
-for (const width of [375, 585, 677]) {
-  test(`inline simplification reduces observed false-positive geometry at ${width}px`, async ({ page }) => {
-    await setMarkdown(page, '通过 **SSH** 登录。');
-    await page.locator('.phone').evaluate((el, width) => { el.style.maxWidth = 'none'; el.style.width = width + 'px'; }, width);
-    const before = await geometry(page);
-    expect(before.average).toBeLessThan(before.threshold);
-    await page.locator('#renderMode').selectOption('simple');
-    const after = await geometry(page);
-    expect(after.rects).toBe(1);
-    expect(after.average).toBeGreaterThan(after.threshold);
-    await setMarkdown(page, ('一段含 **加粗** 和 `代码` 的多行正文。').repeat(12));
-    expect((await geometry(page)).rects).toBeGreaterThan(1);
-    const multiline = await geometry(page);
-    expect(multiline.average).toBeGreaterThan(multiline.threshold);
-  });
-}
-
-test('simple mode is opt-in, reversible, and preserves content and code indentation', async ({ page }) => {
-  await setMarkdown(page, sample);
-  await expect(page.locator('#preview img')).toHaveAttribute('data-w', '600');
-  const original = await page.locator('#preview').innerHTML();
-  await expect(page.locator('#compatNote')).toBeHidden();
-  await page.locator('#renderMode').selectOption('simple');
-  await expect(page.locator('#compatNote')).toBeVisible();
-  await expect(page.locator('#preview strong, #preview em, #preview del, #preview a, #preview code, #preview pre')).toHaveCount(0);
-  await expect(page.locator('#preview')).toContainText('〔已删除：旧命令〕');
-  await expect(page.locator('#preview')).toContainText('文档（https://example.com/?a=1&b=2）');
-  await expect(page.locator('#preview ol')).toHaveAttribute('start', '3');
-  await expect(page.locator('#preview blockquote')).toContainText('引用 重点');
-  await expect(page.locator('#preview table')).toHaveCount(1);
-  await expect(page.locator('#preview img')).toHaveAttribute('data-ratio', '0.5333');
-  const lines = page.locator('#preview p').filter({ hasText: 'app: value' });
-  expect(await lines.textContent()).toBe('\u00a0\u00a0app:\u00a0value');
-  const escaped = page.locator('#preview p').filter({ hasText: 'image:' });
-  expect(await escaped.textContent()).toBe('\u00a0'.repeat(4) + 'image:\u00a0"a\u00a0<\u00a0b\u00a0&\u00a0c"');
-  expect(await escaped.locator('xpath=..').locator(':scope > p').count()).toBe(5);
-  await expect(escaped.locator('xpath=..').locator('p > br')).toHaveCount(1);
-  await expect(page.locator('#editor')).toHaveValue(sample);
-  await page.locator('#renderMode').selectOption('styled');
-  await expect(page.locator('#preview img')).toHaveAttribute('data-w', '600');
-  expect(await page.locator('#preview').innerHTML()).toBe(original);
-});
-
-test('headings remain safe against editor font defaults in all modes', async ({ page }) => {
-  await page.addStyleTag({ content: 'h1 {font-size:30px} h2 {font-size:22.5px} h3 {font-size:20px}' });
-  await setMarkdown(page, sample);
-  for (const mode of ['styled', 'color', 'simple']) {
-    await page.locator('#renderMode').selectOption(mode);
-    const bad = await page.locator('#preview [style]').evaluateAll(nodes => nodes.filter(el => {
-      const s = getComputedStyle(el);
-      return el.textContent.trim() && parseFloat(s.lineHeight) <= parseFloat(s.fontSize);
-    }).map(el => el.outerHTML));
-    expect(bad).toEqual([]);
-  }
-});
-
 for (const method of ['async', 'legacy', 'throw']) {
   test(`clipboard ${method} copies latest rendered content, not Markdown source`, async ({ page }) => {
     await captureClipboard(page, method);
@@ -157,26 +89,24 @@ for (const method of ['async', 'legacy', 'throw']) {
   });
 }
 
-test('async rejection falls back to the original snapshot even after editing and switching mode', async ({ page }) => {
+test('async rejection falls back to the original snapshot even after editing', async ({ page }) => {
   await setMarkdown(page, '原来 **这份** 正文');
   await captureClipboard(page, 'reject');
   const original = await page.locator('#preview').innerHTML();
   await page.locator('#copyBtn').click();
   await setMarkdown(page, '后来这份正文');
-  await page.locator('#renderMode').selectOption('simple');
   await page.evaluate(() => window.rejectCopy(new Error('permission denied')));
   await expect.poll(() => page.evaluate(() => window.copied?.html)).toBe(original);
 });
 
-test('simple clipboard matches preview; loaded image dimensions and notice boundaries are preserved', async ({ page }) => {
+test('clipboard matches preview; loaded image dimensions and notice boundaries are preserved', async ({ page }) => {
   await setMarkdown(page, sample);
-  await page.locator('#renderMode').selectOption('simple');
   await expect(page.locator('#preview img')).toHaveAttribute('data-w', '600');
   const html = await page.locator('#preview').innerHTML();
   await captureClipboard(page);
   await page.locator('#copyBtn').click();
   await expect.poll(() => page.evaluate(() => window.copied?.html)).toBe(html);
-  expect((await page.evaluate(() => window.copied)).text).not.toContain('不保证通过');
+  expect((await page.evaluate(() => window.copied)).text).not.toContain('预览即复制结果');
 });
 
 test('front matter only does not copy the empty placeholder', async ({ page }) => {
@@ -188,7 +118,7 @@ test('front matter only does not copy the empty placeholder', async ({ page }) =
 });
 
 
-test('simple images fill every tested content width and preserve the 596x595 screenshot ratio', async ({ page }, testInfo) => {
+test('images fill every tested content width and preserve the 596x595 screenshot ratio', async ({ page }, testInfo) => {
   await page.route('https://example.com/raidrive.svg', route => route.fulfill({
     contentType: 'image/svg+xml',
     body: '<svg xmlns="http://www.w3.org/2000/svg" width="596" height="595"></svg>',
@@ -196,7 +126,6 @@ test('simple images fill every tested content width and preserve the 596x595 scr
   await setMarkdown(page, '以 RaiDrive 为例\n\n![](https://example.com/raidrive.svg)\n\n在资源管理器中打开');
   const images = page.locator('#preview img');
   await expect(images).toHaveAttribute('data-w', '596');
-  await page.locator('#renderMode').selectOption('simple');
   await expect(images).toHaveAttribute('data-w', '596');
   const measurements = [];
   for (const width of [375, 585, 677]) {
@@ -221,12 +150,6 @@ test('simple images fill every tested content width and preserve the 596x595 scr
   await testInfo.attach('responsive-image-measurements', {
     body: JSON.stringify(measurements, null, 2), contentType: 'application/json',
   });
-  // Original styling remains intrinsic-size-capped; switching back must be reversible.
-  await page.locator('#renderMode').selectOption('styled');
-  await expect(images).toHaveAttribute('data-w', '596');
-  expect(await images.evaluate(img => img.getBoundingClientRect().width)).toBeCloseTo(596, 1);
-  expect(measurements[2].width).toBeGreaterThan(596);
-  await page.locator('#renderMode').selectOption('simple');
   // Restore normal layout before clicking: the measurement overlay covers the toolbar.
   await page.locator('#preview').evaluate(el => el.removeAttribute('style'));
   await page.setViewportSize({ width: 1280, height: 900 });
@@ -236,10 +159,9 @@ test('simple images fill every tested content width and preserve the 596x595 scr
   expect(await page.evaluate(() => window.copied.html)).toContain('width:100%;height:auto;');
 });
 
-test('unloaded simple image keeps responsive CSS without inventing intrinsic size metadata', async ({ page }) => {
+test('unloaded image keeps responsive CSS without inventing intrinsic size metadata', async ({ page }) => {
   await page.route('https://example.com/unavailable.png', route => route.abort());
   await setMarkdown(page, '![](https://example.com/unavailable.png)');
-  await page.locator('#renderMode').selectOption('simple');
   const metadata = await page.locator('#preview img').evaluate(img => ({
     width: img.style.width, height: img.style.height, naturalWidth: img.naturalWidth,
     dataWidth: img.getAttribute('data-w'), ratio: img.getAttribute('data-ratio'),
@@ -248,41 +170,54 @@ test('unloaded simple image keeps responsive CSS without inventing intrinsic siz
 });
 
 
-test('color mode restores accents and links without changing the known simple fallback', async ({ page }) => {
+
+test('only color layout is available on initial load, edit, and reload', async ({ page }) => {
+  await expect(page.locator('#renderMode, .render-mode')).toHaveCount(0);
+  await expect(page.locator('.phone-head')).toHaveText('公众号预览');
   await setMarkdown(page, sample);
-  await expect(page.locator('#preview img')).toHaveAttribute('data-w', '600');
-  const original = await page.locator('#preview').innerHTML();
-  await page.locator('#renderMode').selectOption('simple');
-  await expect(page.locator('#preview img')).toHaveAttribute('data-w', '600');
-  const simple = await page.locator('#preview').innerHTML();
-  const simpleNotice = await page.locator('#compatNote').textContent();
-  await page.locator('#renderMode').selectOption('color');
-  await expect(page.locator('#compatNote')).toContainText('其他文章与微信后台版本仍需核验');
   await expect(page.locator('#preview strong').first()).toHaveCSS('color', 'rgb(239, 112, 96)');
   await expect(page.locator('#preview em')).toHaveCSS('font-style', 'italic');
-  await expect(page.locator('#preview del')).toContainText('旧命令');
+  await expect(page.locator('#preview del')).toHaveCSS('text-decoration-line', 'line-through');
   await expect(page.locator('#preview a')).toHaveAttribute('href', 'https://example.com/?a=1&b=2');
-  await expect(page.locator('#preview a')).toHaveCSS('color', 'rgb(87, 107, 149)');
-  await expect(page.locator('#preview span').filter({ hasText: /^echo hi$/ })).toHaveCSS('color', 'rgb(239, 112, 96)');
-  await expect(page.locator('#preview code, #preview pre, #preview h2 > span, #preview li > section')).toHaveCount(0);
-  expect(await page.locator('#preview img').evaluate(el => el.style.width)).toBe('100%');
-  const line = page.locator('#preview p').filter({ hasText: 'app: value' });
-  expect((await line.textContent()).replaceAll(String.fromCharCode(160), ' ')).toBe('  app: value');
-  const codeBlock = line.locator('xpath=..');
-  await expect(codeBlock.locator('span span span')).toHaveCount(0);
-  await expect(codeBlock.locator(':scope > p')).toHaveCount(5);
-  await expect(codeBlock.locator('p > br')).toHaveCount(1);
+  await expect(page.locator('#preview pre, #preview code, #preview li > section')).toHaveCount(0);
+  await expect(page.locator('#preview ol')).toHaveAttribute('start', '3');
+  await expect(page.locator('#preview table')).toHaveCount(1);
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('md2wx.draft'))).toBe(sample);
+  const first = await page.locator('#preview').innerHTML();
+  await page.reload();
   await expect(page.locator('#editor')).toHaveValue(sample);
-  await page.locator('#renderMode').selectOption('simple');
   await expect(page.locator('#preview img')).toHaveAttribute('data-w', '600');
-  expect(await page.locator('#preview').innerHTML()).toBe(simple);
-  expect(await page.locator('#compatNote').textContent()).toBe(simpleNotice);
-  await page.locator('#renderMode').selectOption('styled');
-  await expect(page.locator('#preview img')).toHaveAttribute('data-w', '600');
-  expect(await page.locator('#preview').innerHTML()).toBe(original);
-  await expect(page.locator('#compatNote')).toBeHidden();
+  expect(await page.locator('#preview').innerHTML()).toBe(first);
+  const source = pageHtml('test', '');
+  for (const removed of ['simpleMode', 'colorMode', 'renderMode', 'simpleCode', 'highlightInline', 'wrapLines']) {
+    expect(source).not.toContain(removed);
+  }
 });
 
+test('code rows preserve palette, whitespace, and original Mac decoration', async ({ page }) => {
+  await setMarkdown(page, sample);
+  const row = page.locator('#preview p').filter({ hasText: 'app: value' });
+  const body = row.locator('xpath=..');
+  const rows = await body.locator(':scope > p').allTextContents();
+  expect(rows.map(s => s.replaceAll(String.fromCharCode(160), ' '))).toEqual(['services:', '  app: value', '    image: "a < b & c"', '', '  last: true']);
+  const bar = body.locator('xpath=preceding-sibling::section');
+  expect(await bar.locator('span').allTextContents()).toEqual(['●', '●', '●']);
+  expect(await bar.locator('span').evaluateAll(els => els.map(el => getComputedStyle(el).color))).toEqual(['rgb(255, 95, 86)', 'rgb(254, 188, 46)', 'rgb(39, 201, 63)']);
+  await expect(body).toHaveCSS('padding', '12px 16px 16px');
+  const inline = page.locator('#preview span').filter({ hasText: /^echo hi$/ });
+  await expect(inline).toHaveCSS('font-size', '14px');
+  await expect(inline).toHaveCSS('line-height', '25px');
+  await expect(inline).toHaveCSS('padding', '2px 4px');
+  const palette = await body.locator('span').evaluateAll(els => [...new Set(els.map(el => getComputedStyle(el).color))]);
+  expect(palette.length).toBeGreaterThan(1);
+});
+
+test('heading font sizes remain safe against editor defaults', async ({ page }) => {
+  await page.addStyleTag({ content: 'h1,h2,h3,h4 { font-size:60px; line-height:1; }' });
+  await setMarkdown(page, '# One\n\n## Two\n\n### Three\n\n#### Four');
+  const sizes = await page.locator('#preview h1,#preview h2,#preview h3,#preview h4').evaluateAll(els => els.map(el => { const s=getComputedStyle(el); return [parseFloat(s.fontSize), parseFloat(s.lineHeight)]; }));
+  expect(sizes).toEqual([[24,36],[18,43],[16,24],[15,23]]);
+});
 // Compare visible character colors, not just the presence of a few colored spans.
 function characterColors(root) {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
@@ -297,26 +232,9 @@ function characterColors(root) {
   return output;
 }
 
-test('color mode keeps the original per-character code palette using paragraph text runs with flat tokens', async ({ page }) => {
-  const source = ['// comment', 'const answer = 42;', '  console.log(`hello ${answer}`);', '', '/* first', '   second */'].join(String.fromCharCode(10));
-  await setMarkdown(page, ['```javascript', source, '```'].join(String.fromCharCode(10)));
-  const original = await page.locator('#preview pre code').evaluate(characterColors);
-  expect(new Set(original.map(part => part.color)).size).toBeGreaterThan(3);
-  await page.locator('#renderMode').selectOption('color');
-  const rows = page.locator('#preview p');
-  await expect(rows).toHaveCount(6);
-  const block = rows.first().locator('xpath=..');
-  expect(await block.evaluate(characterColors)).toEqual(original);
-  expect(await rows.evaluateAll(nodes => nodes.map(el => el.textContent.replaceAll(String.fromCharCode(160), ' ')).join(String.fromCharCode(10)))).toBe(source);
-  await expect(block.locator('span span span, pre, code')).toHaveCount(0);
-  await expect(rows.first().locator('span')).toHaveCount(0);
-  await expect(rows.first()).toHaveCSS('color', 'rgb(92, 99, 112)');
-});
-
 for (const method of ['async', 'legacy']) {
   test(`color mode ${method} clipboard keeps the same colors and readable text as the preview`, async ({ page }) => {
     await setMarkdown(page, sample);
-    await page.locator('#renderMode').selectOption('color');
     await expect(page.locator('#preview img')).toHaveAttribute('data-w', '600');
     await captureClipboard(page, method);
     const html = await page.locator('#preview').innerHTML();
@@ -332,7 +250,6 @@ for (const method of ['async', 'legacy']) {
 test('color mode unknown-language code stays escaped and preserves tabs and blank lines', async ({ page }) => {
   const source = ['<script>window.codeExecuted = true;</script>', String.fromCharCode(9) + 'a < b & c', '', 'last'].join(String.fromCharCode(10));
   await setMarkdown(page, ['```unknown-lang', source, '```'].join(String.fromCharCode(10)));
-  await page.locator('#renderMode').selectOption('color');
   await expect(page.locator('#preview script, #preview pre, #preview code')).toHaveCount(0);
   expect(await page.evaluate(() => window.codeExecuted)).toBeUndefined();
   const rows = page.locator('#preview p');
@@ -352,11 +269,10 @@ for (const width of [375, 585, 677]) {
       '```yaml', 'services:', '  app:', '    image: litepan:latest', '```',
     ].join(String.fromCharCode(10));
     // Render the previous color structure via the same renderer, omitting ONLY normalization.
-    const unnormalized = pageHtml('test', '').replace('if (colorMode) normalizeColorTextRuns(preview);', '');
+    const unnormalized = pageHtml('test', '').replace('normalizeColorTextRuns(preview);', '');
     await page.route(baseURL + '/', route => route.fulfill({ contentType: 'text/html', body: unnormalized }));
     await page.goto(baseURL);
     await setMarkdown(page, markdown);
-    await page.locator('#renderMode').selectOption('color');
     const constrainWidth = () => page.locator('#preview').evaluate((el, width) => {
       el.style.cssText += ';position:fixed;left:0;top:0;width:' + width + 'px;';
     }, width);
@@ -372,7 +288,6 @@ for (const width of [375, 585, 677]) {
     await page.unroute(baseURL + '/');
     await page.goto(baseURL);
     await setMarkdown(page, markdown);
-    await page.locator('#renderMode').selectOption('color');
     await constrainWidth();
     const after = await page.locator('#preview').evaluate(scanCapturedBundleLineHeight);
     expect(after.warnings).toEqual([]);
@@ -392,7 +307,6 @@ test('color normalization does not wrap images or block descendants in an inline
     '<div>块前 <section>内部块</section> 块后</div>', '',
     '<p>普通纯文本</p>',
   ].join(String.fromCharCode(10)));
-  await page.locator('#renderMode').selectOption('color');
   await expect(page.locator('#preview p > img')).toHaveCount(1);
   await expect(page.locator('#preview div > section')).toHaveCount(1);
   await expect(page.locator('#preview span img, #preview span section')).toHaveCount(0);
@@ -402,7 +316,6 @@ test('color normalization does not wrap images or block descendants in an inline
 for (const width of [375, 585, 677]) {
   test(`color H2 background fits text and wraps within ${width}px`, async ({ page }) => {
     await setMarkdown(page, ['## 简介', '', '## 更长一些的标题', '', '## 标题 **强调**', '', '## ' + '长标题内容'.repeat(30), '', '## ' + 'LongHeading'.repeat(30)].join('\n'));
-    await page.locator('#renderMode').selectOption('color');
     await page.locator('#preview').evaluate((el, width) => {
       el.style.cssText += ';position:fixed;left:0;top:0;width:' + width + 'px;';
     }, width);
@@ -433,48 +346,5 @@ for (const width of [375, 585, 677]) {
     await expect.poll(() => page.evaluate(() => window.copied?.html)).toBe(await page.locator('#preview').innerHTML());
     await page.locator('#preview').evaluate(el => { el.innerHTML = window.copied.html; });
     expect(await page.locator('#preview').evaluate(measure)).toEqual(bounds);
-    await page.locator('#renderMode').selectOption('simple');
-    const simple = await page.locator('#preview').evaluate(measure);
-    expect(simple[0].width).toBe(simple[0].parentWidth);
-  });
-}
-
-for (const width of [375, 585, 677]) {
-  test(`color restores Mac code chrome and inline code styling at ${width}px`, async ({ page }) => {
-    await setMarkdown(page, sample);
-    await page.locator('#preview').evaluate((el, width) => {
-      el.style.cssText += ';position:fixed;left:0;top:0;width:' + width + 'px;';
-    }, width);
-    const originalBar = page.locator('#preview pre').locator('xpath=preceding-sibling::section');
-    const barHTML = await originalBar.evaluate(el => el.outerHTML);
-    const originalBox = await originalBar.boundingBox();
-    const properties = ['fontSize', 'lineHeight', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'marginLeft', 'marginRight', 'backgroundColor', 'borderRadius', 'color', 'fontFamily'];
-    const inlineStyle = await page.locator('#preview p > code').first().evaluate((el, props) => Object.fromEntries(props.map(p => [p, getComputedStyle(el)[p]])), properties);
-    const codePadding = await page.locator('#preview pre > code').evaluate(el => getComputedStyle(el).padding);
-    const decoration = await page.locator('#preview pre').locator('xpath=..').evaluate(el => {
-      const s = getComputedStyle(el); return [s.backgroundColor, s.borderRadius, s.boxShadow];
-    });
-    await page.locator('#renderMode').selectOption('color');
-    const row = page.locator('#preview p').filter({ hasText: 'app: value' });
-    const body = row.locator('xpath=..');
-    const bar = body.locator('xpath=preceding-sibling::section');
-    expect(await bar.evaluate(el => el.outerHTML)).toBe(barHTML);
-    const box = await bar.boundingBox();
-    expect(box.width).toBe(originalBox.width);
-    expect(box.height).toBe(originalBox.height);
-    expect(await body.evaluate(el => getComputedStyle(el).padding)).toBe(codePadding);
-    expect(await body.locator('xpath=..').evaluate(el => {
-      const s = getComputedStyle(el); return [s.backgroundColor, s.borderRadius, s.boxShadow];
-    })).toEqual(decoration);
-    const inline = page.locator('#preview span').filter({ hasText: /^echo hi$/ });
-    expect(await inline.evaluate((el, props) => Object.fromEntries(props.map(p => [p, getComputedStyle(el)[p]])), properties)).toEqual(inlineStyle);
-    const scan = await page.locator('#preview').evaluate(scanCapturedBundleLineHeight);
-    expect(scan.warnings).toEqual([]);
-    await captureClipboard(page);
-    await page.locator('#copyBtn').click();
-    await expect.poll(() => page.evaluate(() => window.copied?.html)).toBe(await page.locator('#preview').innerHTML());
-    expect(await page.evaluate(() => window.copied.html)).toContain(barHTML);
-    await page.locator('#renderMode').selectOption('simple');
-    expect(await page.locator('#preview').innerText()).not.toContain('●');
   });
 }

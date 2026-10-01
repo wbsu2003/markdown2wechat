@@ -267,15 +267,14 @@ for (const mode of ['html', 'markdown']) {
       cwd: dir, env: process.env, timeout: 80000,
     });
     const data = JSON.parse(await readFile(path.join(dir, 'reports/article-diagnostic.json'), 'utf8'));
-    expect(data.samples).toHaveLength(mode === 'html' ? 3 : 9);
+    expect(data.samples).toHaveLength(3);
     if (mode === 'html') {
       expect(data.samples.every(s => s.findings.some(f => f.paragraph === 10 && f.excerpt.startsWith('fixture-html')))).toBe(true);
     } else {
       expect(data.samples.filter(s => s.renderMode === 'color')).toHaveLength(3);
-      // A disabled renderer previously left the built-in demo in place. Catch that regression explicitly.
-      expect(data.samples.filter(s => s.renderMode === 'styled').every(s => s.summary.suspected > 0)).toBe(true);
-      expect(data.samples.filter(s => s.renderMode === 'simple').every(s => s.summary.suspected === 0)).toBe(true);
+      // The sole renderer must process the supplied article, not leave its built-in demo.
       expect(data.samples.every(s => s.measuredBlocks === 3)).toBe(true);
+      expect(data.samples.every(s => !s.capturedBundleFallback.warnings.some(w => w.text.startsWith('通过')))).toBe(true);
     }
   });
 }

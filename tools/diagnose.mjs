@@ -61,20 +61,15 @@ async function diagnose(mode, filename) {
             return token.text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
           },
         } });
-        document.getElementById('editor').value = source;
+        const editor = document.getElementById('editor');
+        editor.value = source;
+        editor.dispatchEvent(new Event('input', { bubbles: true }));
       }, source);
+      await page.waitForTimeout(200); // Flush the renderer's 150ms input debounce.
     } else {
       await page.setContent(source, { waitUntil: 'domcontentloaded' });
     }
-    for (const renderMode of mode === '--markdown' ? ['styled', 'color', 'simple'] : ['imported-html']) {
-      if (mode === '--markdown') {
-        // Render the latest source synchronously, without waiting for the editor debounce.
-        await page.evaluate(value => {
-          const select = document.getElementById('renderMode');
-          select.value = value;
-          select.dispatchEvent(new Event('change'));
-        }, renderMode);
-      }
+    for (const renderMode of mode === '--markdown' ? ['color'] : ['imported-html']) {
       for (const width of [375, 585, 677]) {
         await page.setViewportSize({ width, height: 900 });
         const root = mode === '--markdown' ? '#preview' : 'body';
