@@ -384,7 +384,7 @@ function pageHtml(version, releaseDate) {
     <button class="tb" data-act="vault" title="Obsidian / 本地笔记库：授权目录后点选笔记直接载入">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"><path d="M8 1.5 12.8 5 11.4 14 4.6 14 3.2 5z"/><path d="M8 1.5 6.8 8.2 8 14"/><path d="M3.2 5h9.6" opacity=".5"/></svg>
     </button>
-    <button class="tb" data-act="vaultLegacy" title="兼容选目录：用传统目录选择器载入 Obsidian 笔记（Chrome 目录授权异常时使用，不记忆目录）">
+    <button class="tb" data-act="vaultLegacy" title="兼容选目录：用传统目录选择器载入 Obsidian 笔记（会记住，更新请点抽屉里的「换库」）">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M8 1.5 12.8 5 11.4 14 4.6 14 3.2 5z"/><path d="M3.2 5h9.6" opacity=".45"/><path d="M8 7v4.5"/><path d="m6.3 9.8 1.7 1.7 1.7-1.7"/></svg>
     </button>
     <button class="tb" data-act="sample" title="载入示例文档">
@@ -1272,27 +1272,29 @@ function pageHtml(version, releaseDate) {
     });
   }
 
-  function openVault(forcePick) {
-    /* input.click() 必须在点击的同步调用栈里触发，否则浏览器会拦截。*/
-    if (needLegacyPicker()) {
-      var hasCache = false;
-      try { hasCache = localStorage.getItem('md2wx_legacy_vault') === '1'; } catch (e) {}
-      if (forcePick || !hasCache) {
-        if (forcePick) setLegacyFlag(false);
-        pickVaultLegacy();
-        return;
-      }
-      idbGet('vaultLegacyFiles').then(function (cached) {
-        if (cached && cached.length) {
-          vaultFiles = restoreLegacyFiles(cached);
-          openDrawer();
-          renderVaultList(vaultSearch.value);
-          return;
-        }
-        pickVaultLegacy();
-      }).catch(function () { pickVaultLegacy(); });
+  /* 兼容路径：命中缓存直接显示列表；否则（或强制换库）才弹目录选择器。
+     input.click() 放在同步栈里，避免浏览器拦截。*/
+  function openLegacyVault(forcePick) {
+    var hasCache = false;
+    try { hasCache = localStorage.getItem('md2wx_legacy_vault') === '1'; } catch (e) {}
+    if (forcePick || !hasCache) {
+      if (forcePick) setLegacyFlag(false);
+      pickVaultLegacy();
       return;
     }
+    idbGet('vaultLegacyFiles').then(function (cached) {
+      if (cached && cached.length) {
+        vaultFiles = restoreLegacyFiles(cached);
+        openDrawer();
+        renderVaultList(vaultSearch.value);
+        return;
+      }
+      pickVaultLegacy();
+    }).catch(function () { pickVaultLegacy(); });
+  }
+
+  function openVault(forcePick) {
+    if (needLegacyPicker()) { openLegacyVault(forcePick); return; }
     if (!window.showDirectoryPicker) {
       toast('当前浏览器不支持目录访问，请点工具栏的「兼容选目录」，或改用「打开文件」按钮');
       return;
@@ -1435,7 +1437,7 @@ function pageHtml(version, releaseDate) {
     },
     openfile: function () { openLocalFile(); },
     vault: function () { openVault(false); },
-    vaultLegacy: function () { pickVaultLegacy(); },
+    vaultLegacy: function () { openLegacyVault(false); },
     sample: function () {
       if (ed.value.trim() && !confirm('载入示例会覆盖当前内容，继续？')) return;
       ed.value = SAMPLE;
