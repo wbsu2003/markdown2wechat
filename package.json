@@ -1,7 +1,7 @@
 {
   "name": "markdown2wechat",
-  "version": "0.0.7",
-  "releaseDate": "20261001",
+  "version": "0.0.8",
+  "releaseDate": "20261125",
   "private": true,
   "scripts": {
     "dev": "wrangler dev",
