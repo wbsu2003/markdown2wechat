@@ -384,6 +384,9 @@ function pageHtml(version, releaseDate) {
     <button class="tb" data-act="vault" title="Obsidian / 本地笔记库：授权目录后点选笔记直接载入">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"><path d="M8 1.5 12.8 5 11.4 14 4.6 14 3.2 5z"/><path d="M8 1.5 6.8 8.2 8 14"/><path d="M3.2 5h9.6" opacity=".5"/></svg>
     </button>
+    <button class="tb" data-act="vaultLegacy" title="兼容选目录：用传统目录选择器载入 Obsidian 笔记（Chrome 目录授权异常时使用，不记忆目录）">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M8 1.5 12.8 5 11.4 14 4.6 14 3.2 5z"/><path d="M3.2 5h9.6" opacity=".45"/><path d="M8 7v4.5"/><path d="m6.3 9.8 1.7 1.7 1.7-1.7"/></svg>
+    </button>
     <button class="tb" data-act="sample" title="载入示例文档">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 1.5H4a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V5z"/><path d="M9.5 1.5V5H13"/><line x1="5.5" y1="8" x2="10.5" y2="8"/><line x1="5.5" y1="10.5" x2="10.5" y2="10.5"/></svg>
     </button>
@@ -453,6 +456,7 @@ function pageHtml(version, releaseDate) {
 </div>
 
 <input type="file" id="fileInput" accept=".md,.markdown,.txt" style="display:none">
+<input type="file" id="dirInput" webkitdirectory directory multiple style="display:none">
 
 <div class="toast" id="toast"></div>
 
@@ -1194,6 +1198,45 @@ function pageHtml(version, releaseDate) {
     }
   });
 
+  /* Chrome 157+ 在 Windows 上的 File System Access API 回归：目录框能选，
+     确认后错误抛 AbortError（crbug 582407452 / 583003036），Edge 不受影响。
+     这类环境直接用传统 webkitdirectory input，不依赖已损坏的 API。*/
+  var dirInput = document.getElementById('dirInput');
+  function needLegacyPicker() {
+    var ua = navigator.userAgent || '';
+    if (ua.indexOf('Windows NT') === -1) return false;
+    if (ua.indexOf('Edg/') !== -1) return false;
+    var m = ua.match(/Chrome\\/(\\d+)/);
+    return !!m && parseInt(m[1], 10) >= 157;
+  }
+  function pickVaultLegacy() {
+    dirInput.value = '';
+    dirInput.click();
+  }
+  dirInput.addEventListener('change', function () {
+    var files = Array.prototype.slice.call(dirInput.files || []);
+    if (!files.length) return;
+    var out = [];
+    for (var i = 0; i < files.length; i++) {
+      var f = files[i];
+      if (!/\\.(md|markdown|txt)$/i.test(f.name)) continue;
+      var rel = f.webkitRelativePath || f.name;
+      var parts = rel.split('/');
+      if (parts.length > 1) parts.shift();  /* 去掉用户所选根目录名，与原生扫描路径格式一致 */
+      out.push({
+        name: f.name,
+        path: parts.join('/'),
+        handle: { getFile: (function (file) { return function () { return Promise.resolve(file); }; })(f) },
+        mtime: f.lastModified || 0
+      });
+    }
+    out.sort(function (a, b) { return b.mtime - a.mtime; });
+    vaultFiles = out;
+    openDrawer();
+    renderVaultList(vaultSearch.value);
+    toast('兼容模式：已读取 ' + out.length + ' 篇笔记（本次不记忆目录）');
+  });
+
   function pickVault() {
     return window.showDirectoryPicker({ id: 'obsidianVault' }).then(function (h) {
       vaultHandle = h;
@@ -1209,8 +1252,10 @@ function pageHtml(version, releaseDate) {
   }
 
   function openVault(forcePick) {
+    /* input.click() 必须在点击的同步调用栈里触发，否则浏览器会拦截。*/
+    if (needLegacyPicker()) { pickVaultLegacy(); return; }
     if (!window.showDirectoryPicker) {
-      toast('当前浏览器不支持目录访问，请用 Chrome/Edge，或改用「打开文件」按钮');
+      toast('当前浏览器不支持目录访问，请点工具栏的「兼容选目录」，或改用「打开文件」按钮');
       return;
     }
     var ready;
@@ -1236,7 +1281,11 @@ function pageHtml(version, releaseDate) {
       });
     }).catch(function (e) {
       closeDrawer();
-      if (e && e.name === 'AbortError') return;
+      /* 不再静默吞：Chrome 回归下用户选完目录却「没反应」，必须给出可操作提示。*/
+      if (e && e.name === 'AbortError') {
+        toast('目录未载入。若选完目录没反应，请点工具栏「兼容选目录」');
+        return;
+      }
       toast('打开笔记库失败：' + (e && e.message ? e.message : e));
     });
   }
@@ -1347,6 +1396,7 @@ function pageHtml(version, releaseDate) {
     },
     openfile: function () { openLocalFile(); },
     vault: function () { openVault(false); },
+    vaultLegacy: function () { pickVaultLegacy(); },
     sample: function () {
       if (ed.value.trim() && !confirm('载入示例会覆盖当前内容，继续？')) return;
       ed.value = SAMPLE;
