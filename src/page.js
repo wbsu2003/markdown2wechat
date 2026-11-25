@@ -1213,6 +1213,18 @@ function pageHtml(version, releaseDate) {
     dirInput.value = '';
     dirInput.click();
   }
+  function legacyHandle(file) {
+    return { getFile: function () { return Promise.resolve(file); } };
+  }
+  function restoreLegacyFiles(cached) {
+    return cached.map(function (x) {
+      return { name: x.name, path: x.path, file: x.file, handle: legacyHandle(x.file), mtime: x.mtime };
+    });
+  }
+  function setLegacyFlag(has) {
+    try { localStorage.setItem('md2wx_legacy_vault', has ? '1' : ''); } catch (e) {}
+  }
+
   dirInput.addEventListener('change', function () {
     var files = Array.prototype.slice.call(dirInput.files || []);
     if (!files.length) return;
@@ -1226,15 +1238,24 @@ function pageHtml(version, releaseDate) {
       out.push({
         name: f.name,
         path: parts.join('/'),
-        handle: { getFile: (function (file) { return function () { return Promise.resolve(file); }; })(f) },
+        file: f,
+        handle: legacyHandle(f),
         mtime: f.lastModified || 0
       });
     }
     out.sort(function (a, b) { return b.mtime - a.mtime; });
     vaultFiles = out;
+    /* File 可被结构化克隆存入 IndexedDB；下次打开无需再选目录。
+       localStorage 仅作同步标记，确保 input.click() 留在用户手势栈内。*/
+    var cached = out.map(function (x) {
+      return { name: x.name, path: x.path, file: x.file, mtime: x.mtime };
+    });
+    idbSet('vaultLegacyFiles', cached).then(function () {
+      setLegacyFlag(true);
+    }).catch(function () { setLegacyFlag(false); });
     openDrawer();
     renderVaultList(vaultSearch.value);
-    toast('兼容模式：已读取 ' + out.length + ' 篇笔记（本次不记忆目录）');
+    toast('兼容模式：已读取 ' + out.length + ' 篇笔记并记住（更新请点「换库」）');
   });
 
   function pickVault() {
@@ -1253,7 +1274,25 @@ function pageHtml(version, releaseDate) {
 
   function openVault(forcePick) {
     /* input.click() 必须在点击的同步调用栈里触发，否则浏览器会拦截。*/
-    if (needLegacyPicker()) { pickVaultLegacy(); return; }
+    if (needLegacyPicker()) {
+      var hasCache = false;
+      try { hasCache = localStorage.getItem('md2wx_legacy_vault') === '1'; } catch (e) {}
+      if (forcePick || !hasCache) {
+        if (forcePick) setLegacyFlag(false);
+        pickVaultLegacy();
+        return;
+      }
+      idbGet('vaultLegacyFiles').then(function (cached) {
+        if (cached && cached.length) {
+          vaultFiles = restoreLegacyFiles(cached);
+          openDrawer();
+          renderVaultList(vaultSearch.value);
+          return;
+        }
+        pickVaultLegacy();
+      }).catch(function () { pickVaultLegacy(); });
+      return;
+    }
     if (!window.showDirectoryPicker) {
       toast('当前浏览器不支持目录访问，请点工具栏的「兼容选目录」，或改用「打开文件」按钮');
       return;
